@@ -7,9 +7,14 @@ final class TimerService: ObservableObject {
     @Published private(set) var currentSession: FocusSession?
     @Published private(set) var remainingTime: TimeInterval = 0
     @Published private(set) var progress: Double = 0
+    @Published private(set) var pausedDuration: TimeInterval = 0
 
     private var timer: Timer?
     private var pausedTimeRemaining: TimeInterval = 0
+    private var pauseStartTime: Date?
+
+    // Callbacks for view model to handle completion and persistence
+    var onSessionCompleted: ((FocusSession) -> Void)?
 
     // MARK: - Computed Properties
 
@@ -43,6 +48,7 @@ final class TimerService: ObservableObject {
         currentSession = session
         remainingTime = duration
         progress = 0
+        pausedDuration = 0
         state = .running
 
         startTimer()
@@ -53,13 +59,24 @@ final class TimerService: ObservableObject {
         guard state == .running, let session = currentSession else { return }
 
         pausedTimeRemaining = session.endTime.timeIntervalSince(Date())
+        pauseStartTime = Date()
         stopTimer()
         state = .paused
+
+        // Cancel scheduled notification while paused
+        NotificationService.shared.cancelPendingNotifications()
+
         HapticManager.shared.lightTap()
     }
 
     func resume() {
         guard state == .paused, let session = currentSession else { return }
+
+        // Calculate how long we were paused
+        if let pauseStart = pauseStartTime {
+            pausedDuration += Date().timeIntervalSince(pauseStart)
+        }
+        pauseStartTime = nil
 
         // Adjust start time to account for pause
         let newStartTime = Date().addingTimeInterval(-session.plannedDuration + pausedTimeRemaining)
@@ -79,6 +96,8 @@ final class TimerService: ObservableObject {
 
     func stop() {
         stopTimer()
+        NotificationService.shared.cancelPendingNotifications()
+
         if let session = currentSession {
             currentSession = FocusSession(
                 id: session.id,
@@ -96,16 +115,33 @@ final class TimerService: ObservableObject {
 
     func reset() {
         stopTimer()
+        NotificationService.shared.cancelPendingNotifications()
         currentSession = nil
         remainingTime = 0
         progress = 0
         pausedTimeRemaining = 0
+        pausedDuration = 0
+        pauseStartTime = nil
         state = .idle
     }
 
-    /// Called when app returns to foreground to recalculate time
-    func recalculateTime() {
+    /// Called when app goes to background - schedule notification
+    func onBackground() {
         guard state == .running, let session = currentSession else { return }
+
+        NotificationService.shared.scheduleSessionComplete(
+            at: session.endTime,
+            duration: session.plannedDuration,
+            sessionType: session.sessionType
+        )
+    }
+
+    /// Called when app returns to foreground - recalculate time
+    func onForeground() {
+        guard state == .running, let session = currentSession else { return }
+
+        // Cancel the scheduled notification since we're back in foreground
+        NotificationService.shared.cancelPendingNotifications()
 
         let remaining = session.endTime.timeIntervalSince(Date())
 
@@ -115,6 +151,11 @@ final class TimerService: ObservableObject {
             remainingTime = remaining
             progress = session.progress
         }
+    }
+
+    /// Called when app returns to foreground to recalculate time (legacy method for compatibility)
+    func recalculateTime() {
+        onForeground()
     }
 
     // MARK: - Private Methods
@@ -149,6 +190,7 @@ final class TimerService: ObservableObject {
 
     private func completeSession() {
         stopTimer()
+        NotificationService.shared.cancelPendingNotifications()
 
         if let session = currentSession {
             let completedSession = FocusSession(
@@ -161,6 +203,9 @@ final class TimerService: ObservableObject {
             )
             completedSession.actualDuration = session.plannedDuration
             currentSession = completedSession
+
+            // Notify callback for persistence
+            onSessionCompleted?(completedSession)
         }
 
         remainingTime = 0

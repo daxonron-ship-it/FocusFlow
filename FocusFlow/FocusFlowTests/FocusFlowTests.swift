@@ -390,4 +390,220 @@ struct TimerViewModelTests {
         #expect(viewModel.timerService.state == .idle)
         #expect(viewModel.showStopButton == false)
     }
+
+    @Test func primaryButtonTitleForBreakSession() async {
+        let viewModel = TimerViewModel()
+        viewModel.sessionType = .rest
+
+        #expect(viewModel.primaryButtonTitle == "Start Break")
+    }
+
+    @Test func completionViewInitiallyHidden() async {
+        let viewModel = TimerViewModel()
+
+        #expect(viewModel.showCompletionView == false)
+        #expect(viewModel.completedSession == nil)
+    }
+
+    @Test func pausedDurationInitiallyZero() async {
+        let viewModel = TimerViewModel()
+
+        #expect(viewModel.pausedDuration == 0)
+    }
+}
+
+// MARK: - TimerService Background/Foreground Tests
+
+@MainActor
+struct TimerServiceBackgroundTests {
+    @Test func pausedDurationTracking() async {
+        let service = TimerService()
+        service.startSession(duration: 25 * 60)
+
+        #expect(service.pausedDuration == 0)
+
+        service.pause()
+        // Simulate time passing
+        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        service.resume()
+
+        #expect(service.pausedDuration > 0)
+    }
+
+    @Test func pauseCancelsNotificationIntent() async {
+        // This tests that pause doesn't crash - actual notification behavior
+        // requires device testing
+        let service = TimerService()
+        service.startSession(duration: 25 * 60)
+        service.pause()
+
+        #expect(service.state == .paused)
+    }
+
+    @Test func onForegroundRecalculatesTime() async {
+        let service = TimerService()
+        service.startSession(duration: 5) // 5 seconds
+
+        // Wait a bit
+        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+
+        let timeBefore = service.remainingTime
+        service.onForeground()
+        let timeAfter = service.remainingTime
+
+        // Time should have decreased or stayed same
+        #expect(timeAfter <= timeBefore)
+    }
+
+    @Test func completionCallbackInvoked() async {
+        let service = TimerService()
+        var callbackInvoked = false
+
+        service.onSessionCompleted = { session in
+            callbackInvoked = true
+            #expect(session.completionStatus == .completed)
+        }
+
+        // Start a very short session
+        service.startSession(duration: 0.1)
+
+        // Wait for completion
+        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
+
+        #expect(callbackInvoked == true)
+        #expect(service.state == .completed)
+    }
+}
+
+// MARK: - NotificationService Tests
+
+@MainActor
+struct NotificationServiceTests {
+    @Test func sharedInstanceExists() async {
+        let service = NotificationService.shared
+
+        #expect(service != nil)
+    }
+
+    @Test func cancelPendingNotificationsDoesNotCrash() async {
+        // Just verify this doesn't throw
+        NotificationService.shared.cancelPendingNotifications()
+    }
+
+    @Test func cancelAllNotificationsDoesNotCrash() async {
+        // Just verify this doesn't throw
+        NotificationService.shared.cancelAllNotifications()
+    }
+}
+
+// MARK: - Session Complete Flow Tests
+
+@MainActor
+struct SessionCompleteFlowTests {
+    @Test func workSessionCompletionTogglesToBreak() async {
+        let viewModel = TimerViewModel()
+        viewModel.sessionType = .work
+
+        // Simulate completion flow
+        viewModel.dismissCompletionAndContinue()
+
+        #expect(viewModel.sessionType == .rest)
+    }
+
+    @Test func breakSessionCompletionTogglesToWork() async {
+        let viewModel = TimerViewModel()
+        viewModel.sessionType = .rest
+
+        // Simulate completion flow
+        viewModel.dismissCompletionAndContinue()
+
+        #expect(viewModel.sessionType == .work)
+    }
+
+    @Test func skipBreakSetsSessionTypeToWork() async {
+        let viewModel = TimerViewModel()
+        viewModel.sessionType = .rest // Would be set after work completion
+
+        viewModel.skipBreak()
+
+        #expect(viewModel.sessionType == .work)
+        #expect(viewModel.showCompletionView == false)
+    }
+
+    @Test func dismissCompletionViewClearsState() async {
+        let viewModel = TimerViewModel()
+        viewModel.showCompletionView = true
+        viewModel.completedSession = FocusSession(plannedDuration: 25 * 60)
+
+        viewModel.dismissCompletionView()
+
+        #expect(viewModel.showCompletionView == false)
+        #expect(viewModel.completedSession == nil)
+    }
+}
+
+// MARK: - Streak Logic Tests
+
+struct StreakLogicTests {
+    @Test func consecutiveDaysIncrementStreak() {
+        let stats = UserStats()
+        let calendar = Calendar.current
+
+        // First completion
+        stats.lastCompletionDate = calendar.date(byAdding: .day, value: -1, to: Date())
+        stats.currentStreak = 1
+
+        stats.recordCompletion()
+
+        #expect(stats.currentStreak == 2)
+    }
+
+    @Test func missedDayResetsStreak() {
+        let stats = UserStats()
+        let calendar = Calendar.current
+
+        // Last completion was 2 days ago
+        stats.lastCompletionDate = calendar.date(byAdding: .day, value: -2, to: Date())
+        stats.currentStreak = 5
+
+        stats.recordCompletion()
+
+        #expect(stats.currentStreak == 1) // Reset to 1
+    }
+
+    @Test func sameDayCompletionDoesNotChangeStreak() {
+        let stats = UserStats()
+
+        // Complete once
+        stats.recordCompletion()
+        let streakAfterFirst = stats.currentStreak
+
+        // Complete again same day
+        stats.recordCompletion()
+
+        #expect(stats.currentStreak == streakAfterFirst)
+    }
+
+    @Test func longestStreakUpdates() {
+        let stats = UserStats()
+        let calendar = Calendar.current
+
+        // Build up streak over "days"
+        stats.currentStreak = 0
+        stats.longestStreak = 0
+
+        // Day 1
+        stats.recordCompletion()
+        #expect(stats.longestStreak == 1)
+
+        // Simulate day 2
+        stats.lastCompletionDate = calendar.date(byAdding: .day, value: -1, to: Date())
+        stats.recordCompletion()
+        #expect(stats.longestStreak == 2)
+
+        // Simulate day 3
+        stats.lastCompletionDate = calendar.date(byAdding: .day, value: -1, to: Date())
+        stats.recordCompletion()
+        #expect(stats.longestStreak == 3)
+    }
 }

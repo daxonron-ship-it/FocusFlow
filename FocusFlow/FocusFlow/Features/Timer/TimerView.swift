@@ -1,10 +1,55 @@
 import SwiftUI
+import SwiftData
 
 struct TimerView: View {
     @StateObject private var viewModel = TimerViewModel()
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
+        ZStack {
+            // Main timer content
+            mainContent
+                .opacity(viewModel.showCompletionView ? 0 : 1)
+
+            // Completion view overlay
+            if viewModel.showCompletionView, let session = viewModel.completedSession {
+                SessionCompleteView(
+                    session: session,
+                    currentStreak: viewModel.currentStreak,
+                    onStartBreak: {
+                        if session.sessionType == .work {
+                            viewModel.startBreakAfterCompletion()
+                        } else {
+                            // After break, "Start Focus" goes back to work
+                            viewModel.skipBreak()
+                            viewModel.primaryButtonTapped()
+                        }
+                    },
+                    onSkipBreak: viewModel.skipBreak,
+                    onDone: viewModel.dismissCompletionView
+                )
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: viewModel.showCompletionView)
+        .onAppear {
+            viewModel.setModelContext(modelContext)
+            viewModel.onAppear()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            switch newPhase {
+            case .active:
+                viewModel.onForeground()
+            case .background:
+                viewModel.onBackground()
+            default:
+                break
+            }
+        }
+    }
+
+    private var mainContent: some View {
         ZStack {
             AppColors.background.ignoresSafeArea()
 
@@ -31,6 +76,20 @@ struct TimerView: View {
                 )
                 .frame(width: 300, height: 300)
 
+                // Pause duration indicator
+                if viewModel.timerService.isPaused {
+                    HStack(spacing: AppSpacing.sm) {
+                        Image(systemName: "pause.circle.fill")
+                            .foregroundColor(AppColors.textSecondary)
+
+                        Text("Paused for \(formatPauseDuration(viewModel.pausedDuration))")
+                            .font(.system(size: AppFontSize.body, weight: .medium, design: .rounded))
+                            .foregroundColor(AppColors.textSecondary)
+                    }
+                    .padding(.top, AppSpacing.sm)
+                    .transition(.opacity)
+                }
+
                 Spacer()
 
                 // Primary action button
@@ -42,7 +101,7 @@ struct TimerView: View {
                         .padding(.vertical, AppSpacing.md + 4)
                         .background(
                             RoundedRectangle(cornerRadius: AppCornerRadius.medium)
-                                .fill(AppColors.accent)
+                                .fill(primaryButtonColor)
                         )
                 }
                 .buttonStyle(.plain)
@@ -83,14 +142,28 @@ struct TimerView: View {
                 .padding(.bottom, AppSpacing.xl)
             }
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.timerService.state)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.sessionType)
         }
-        .onAppear {
-            viewModel.onAppear()
+    }
+
+    private var primaryButtonColor: Color {
+        switch viewModel.sessionType {
+        case .work:
+            return AppColors.accent
+        case .rest:
+            return AppColors.success
         }
-        .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active {
-                viewModel.onAppear()
-            }
+    }
+
+    private func formatPauseDuration(_ duration: TimeInterval) -> String {
+        let totalSeconds = Int(duration)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+
+        if minutes > 0 {
+            return "\(minutes)m \(seconds)s"
+        } else {
+            return "\(seconds)s"
         }
     }
 }
@@ -139,4 +212,5 @@ struct InfoCard: View {
 
 #Preview {
     TimerView()
+        .modelContainer(for: [FocusSession.self, UserStats.self, AppSettings.self])
 }
