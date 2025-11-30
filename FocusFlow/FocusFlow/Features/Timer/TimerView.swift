@@ -8,8 +8,12 @@ struct TimerView: View {
         ZStack {
             AppColors.background.ignoresSafeArea()
 
-            VStack(spacing: AppSpacing.xl) {
-                Spacer()
+            VStack(spacing: AppSpacing.lg) {
+                // App title
+                Text("FocusFlow")
+                    .font(.system(size: AppFontSize.headline, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppColors.textPrimary)
+                    .padding(.top, AppSpacing.lg)
 
                 // Preset picker (only show when idle)
                 if viewModel.timerService.isIdle {
@@ -17,14 +21,17 @@ struct TimerView: View {
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
+                Spacer()
+
                 // Progress ring
                 ProgressRing(
                     progress: viewModel.progress,
                     remainingTime: viewModel.remainingTime,
                     sessionType: viewModel.sessionType
                 )
-                .frame(width: 280, height: 280)
-                .padding(.vertical, AppSpacing.lg)
+                .frame(width: 300, height: 300)
+
+                Spacer()
 
                 // Primary action button
                 Button(action: viewModel.primaryButtonTapped) {
@@ -32,10 +39,10 @@ struct TimerView: View {
                         .font(.system(size: AppFontSize.headline, weight: .semibold, design: .rounded))
                         .foregroundColor(AppColors.textPrimary)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.md + 4)
                         .background(
                             RoundedRectangle(cornerRadius: AppCornerRadius.medium)
-                                .fill(buttonColor)
+                                .fill(AppColors.accent)
                         )
                 }
                 .buttonStyle(.plain)
@@ -52,22 +59,27 @@ struct TimerView: View {
                     .transition(.opacity)
                 }
 
-                Spacer()
-
-                // Bottom action buttons (placeholders for future milestones)
-                HStack(spacing: AppSpacing.lg) {
-                    PlaceholderButton(
+                // Bottom info cards
+                HStack(spacing: AppSpacing.md) {
+                    InfoCard(
                         icon: "square.grid.2x2",
-                        label: "Apps",
-                        isDisabled: true
+                        title: "Blocking",
+                        value: "Social",
+                        iconColor: AppColors.textSecondary,
+                        valueColor: AppColors.textPrimary,
+                        isPlaceholder: true
                     )
 
-                    PlaceholderButton(
-                        icon: "shield",
-                        label: "Mode",
-                        isDisabled: true
+                    InfoCard(
+                        icon: "lock.fill",
+                        title: "Mode",
+                        value: "Strict",
+                        iconColor: Color.yellow,
+                        valueColor: AppColors.accent,
+                        isPlaceholder: true
                     )
                 }
+                .padding(.horizontal, AppSpacing.lg)
                 .padding(.bottom, AppSpacing.xl)
             }
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.timerService.state)
@@ -81,37 +93,47 @@ struct TimerView: View {
             }
         }
     }
-
-    private var buttonColor: Color {
-        switch viewModel.timerService.state {
-        case .idle, .paused:
-            return AppColors.primary
-        case .running:
-            return AppColors.accent
-        case .completed:
-            return viewModel.sessionType == .work ? AppColors.success : AppColors.primary
-        }
-    }
 }
 
-struct PlaceholderButton: View {
+struct InfoCard: View {
     let icon: String
-    let label: String
-    let isDisabled: Bool
+    let title: String
+    let value: String
+    let iconColor: Color
+    let valueColor: Color
+    var isPlaceholder: Bool = false
 
     var body: some View {
-        VStack(spacing: AppSpacing.xs) {
+        HStack(spacing: AppSpacing.md) {
             Image(systemName: icon)
-                .font(.system(size: 24))
-            Text(label)
-                .font(.system(size: AppFontSize.small, weight: .medium, design: .rounded))
+                .font(.system(size: 20))
+                .foregroundColor(iconColor)
+                .frame(width: 36, height: 36)
+                .background(
+                    RoundedRectangle(cornerRadius: AppCornerRadius.small)
+                        .fill(AppColors.secondaryBackground)
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: AppFontSize.caption, weight: .regular, design: .rounded))
+                    .foregroundColor(AppColors.textSecondary)
+
+                Text(value)
+                    .font(.system(size: AppFontSize.body, weight: .semibold, design: .rounded))
+                    .foregroundColor(valueColor)
+            }
+
+            Spacer()
         }
-        .foregroundColor(isDisabled ? AppColors.textSecondary.opacity(0.5) : AppColors.textSecondary)
-        .frame(width: 80, height: 60)
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, AppSpacing.sm + 4)
+        .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: AppCornerRadius.medium)
-                .fill(AppColors.cardBackground.opacity(isDisabled ? 0.5 : 1))
+                .fill(AppColors.cardBackground)
         )
+        .opacity(isPlaceholder ? 0.7 : 1.0)
     }
 }
 

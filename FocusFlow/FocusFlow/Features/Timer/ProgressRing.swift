@@ -48,13 +48,14 @@ struct ProgressRing: View {
             // Center content
             VStack(spacing: AppSpacing.sm) {
                 Text(remainingTime.formattedTime)
-                    .font(.system(size: AppFontSize.timerDisplay, weight: .bold, design: .rounded))
+                    .font(.system(size: 56, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundColor(AppColors.textPrimary)
 
-                Text(sessionType.displayName)
-                    .font(.system(size: AppFontSize.caption, weight: .medium, design: .rounded))
+                Text(sessionType.displayName.uppercased())
+                    .font(.system(size: AppFontSize.caption, weight: .semibold, design: .rounded))
                     .foregroundColor(AppColors.textSecondary)
+                    .tracking(1.5)
             }
         }
         .accessibilityElement()
