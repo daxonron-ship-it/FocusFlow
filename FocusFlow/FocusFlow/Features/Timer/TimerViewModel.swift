@@ -11,20 +11,37 @@ final class TimerViewModel: ObservableObject {
     @Published var completedSession: FocusSession?
     @Published var currentStreak: Int = 0
     @Published var hasRequestedNotificationPermission: Bool = false
+    @Published var showBlockingFlow: Bool = false
 
     let timerService: TimerService
+    let blockingManager: BlockingManager
     private var modelContext: ModelContext?
     private var cancellables = Set<AnyCancellable>()
 
-    init(timerService: TimerService? = nil) {
+    init(timerService: TimerService? = nil, blockingManager: BlockingManager? = nil) {
         self.timerService = timerService ?? TimerService()
+        self.blockingManager = blockingManager ?? BlockingManager.shared
         setupCompletionHandler()
         setupTimerServiceObserver()
+        setupBlockingManagerObserver()
+
+        // Load saved app selection
+        self.blockingManager.loadSelection()
     }
 
     private func setupTimerServiceObserver() {
         // Forward TimerService changes to trigger view updates
         timerService.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func setupBlockingManagerObserver() {
+        // Forward BlockingManager changes to trigger view updates
+        blockingManager.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
@@ -92,6 +109,36 @@ final class TimerViewModel: ObservableObject {
         isSessionActive
     }
 
+    // MARK: - Blocking Properties
+
+    var blockedAppsDescription: String {
+        if blockingManager.hasSelectedApps {
+            return blockingManager.blockingDescription
+        } else {
+            return "None"
+        }
+    }
+
+    var isBlockingAuthorized: Bool {
+        blockingManager.isAuthorized
+    }
+
+    var hasBlockedApps: Bool {
+        blockingManager.hasSelectedApps
+    }
+
+    // MARK: - Blocking Actions
+
+    func blockingCardTapped() {
+        if blockingManager.isAuthorized {
+            // Already authorized, show app picker directly
+            showBlockingFlow = true
+        } else {
+            // Not authorized, show full permission flow
+            showBlockingFlow = true
+        }
+    }
+
     // MARK: - Actions
 
     func primaryButtonTapped() {
@@ -108,6 +155,9 @@ final class TimerViewModel: ObservableObject {
     }
 
     func stopSession() {
+        // Stop app blocking
+        blockingManager.stopBlocking()
+
         if let session = timerService.currentSession {
             // Record quit in stats
             recordQuit(session: session)
@@ -193,6 +243,11 @@ final class TimerViewModel: ObservableObject {
             strictModeEnabled: false // Will be connected to settings in later milestone
         )
 
+        // Start app blocking for work sessions
+        if sessionType == .work && blockingManager.hasSelectedApps {
+            blockingManager.startBlocking()
+        }
+
         // Request notification permission on first session
         Task {
             await requestNotificationPermissionIfNeeded()
@@ -200,6 +255,9 @@ final class TimerViewModel: ObservableObject {
     }
 
     private func handleSessionCompletion(_ session: FocusSession) {
+        // Stop app blocking
+        blockingManager.stopBlocking()
+
         // Save to SwiftData
         saveSession(session)
 

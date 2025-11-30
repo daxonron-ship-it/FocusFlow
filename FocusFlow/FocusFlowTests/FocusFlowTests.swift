@@ -607,3 +607,88 @@ struct StreakLogicTests {
         #expect(stats.longestStreak == 3)
     }
 }
+
+// MARK: - BlockingManager Tests
+// Note: FamilyControls doesn't work in Simulator, so we test only non-FamilyControls parts
+
+@MainActor
+struct BlockingManagerTests {
+    @Test func sharedInstanceExists() async {
+        let manager = BlockingManager.shared
+        #expect(manager != nil)
+    }
+
+    @Test func initialStateNotBlocking() async {
+        let manager = BlockingManager.shared
+        #expect(manager.isBlocking == false)
+    }
+
+    @Test func blockingDescriptionNone() async {
+        let manager = BlockingManager.shared
+        // Clear any previous selection
+        manager.clearSelection()
+
+        // When no apps selected, should show "None"
+        #expect(manager.blockingDescription == "None")
+        #expect(manager.hasSelectedApps == false)
+        #expect(manager.totalBlockedCount == 0)
+    }
+
+    @Test func stopBlockingDoesNotCrash() async {
+        let manager = BlockingManager.shared
+        // Should not crash even when not blocking
+        manager.stopBlocking()
+        #expect(manager.isBlocking == false)
+    }
+
+    @Test func clearSelectionWorks() async {
+        let manager = BlockingManager.shared
+        manager.clearSelection()
+
+        #expect(manager.selectedAppsCount == 0)
+        #expect(manager.selectedCategoriesCount == 0)
+    }
+}
+
+// MARK: - TimerViewModel Blocking Integration Tests
+
+@MainActor
+struct TimerViewModelBlockingTests {
+    @Test func blockedAppsDescriptionDefault() async {
+        let viewModel = TimerViewModel()
+        // Clear any saved selection
+        viewModel.blockingManager.clearSelection()
+
+        #expect(viewModel.blockedAppsDescription == "None")
+        #expect(viewModel.hasBlockedApps == false)
+    }
+
+    @Test func showBlockingFlowInitiallyFalse() async {
+        let viewModel = TimerViewModel()
+
+        #expect(viewModel.showBlockingFlow == false)
+    }
+
+    @Test func blockingCardTappedShowsFlow() async {
+        let viewModel = TimerViewModel()
+
+        viewModel.blockingCardTapped()
+
+        #expect(viewModel.showBlockingFlow == true)
+    }
+
+    @Test func stopBlockingOnSessionStop() async {
+        let viewModel = TimerViewModel()
+        viewModel.blockingManager.clearSelection()
+
+        // Start a session
+        viewModel.primaryButtonTapped()
+        #expect(viewModel.timerService.isRunning == true)
+
+        // Stop the session
+        viewModel.stopSession()
+
+        // Blocking should be stopped
+        #expect(viewModel.blockingManager.isBlocking == false)
+    }
+}

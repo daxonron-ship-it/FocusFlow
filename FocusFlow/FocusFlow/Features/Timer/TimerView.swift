@@ -47,6 +47,15 @@ struct TimerView: View {
                 break
             }
         }
+        .sheet(isPresented: $viewModel.showBlockingFlow) {
+            if viewModel.isBlockingAuthorized {
+                // Already authorized, show app picker directly
+                AppPickerView(blockingManager: viewModel.blockingManager)
+            } else {
+                // Not authorized, show full permission flow
+                BlockingFlowView(blockingManager: viewModel.blockingManager)
+            }
+        }
     }
 
     private var mainContent: some View {
@@ -120,15 +129,27 @@ struct TimerView: View {
 
                 // Bottom info cards
                 HStack(spacing: AppSpacing.md) {
-                    InfoCard(
-                        icon: "square.grid.2x2",
-                        title: "Blocking",
-                        value: "Social",
-                        iconColor: AppColors.textSecondary,
-                        valueColor: AppColors.textPrimary,
-                        isPlaceholder: true
-                    )
+                    // Blocking card - tappable to select apps
+                    Button(action: {
+                        // Only allow changing blocked apps when not in active session
+                        if !viewModel.isSessionActive {
+                            viewModel.blockingCardTapped()
+                        }
+                    }) {
+                        InfoCard(
+                            icon: "square.grid.2x2",
+                            title: "Blocking",
+                            value: viewModel.blockedAppsDescription,
+                            iconColor: viewModel.hasBlockedApps ? AppColors.primary : AppColors.textSecondary,
+                            valueColor: viewModel.hasBlockedApps ? AppColors.textPrimary : AppColors.textSecondary,
+                            isPlaceholder: !viewModel.hasBlockedApps,
+                            showChevron: !viewModel.isSessionActive
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(viewModel.isSessionActive)
 
+                    // Mode card - placeholder for Strict Mode (future milestone)
                     InfoCard(
                         icon: "lock.fill",
                         title: "Mode",
@@ -175,6 +196,7 @@ struct InfoCard: View {
     let iconColor: Color
     let valueColor: Color
     var isPlaceholder: Bool = false
+    var showChevron: Bool = false
 
     var body: some View {
         HStack(spacing: AppSpacing.md) {
@@ -195,9 +217,16 @@ struct InfoCard: View {
                 Text(value)
                     .font(.system(size: AppFontSize.body, weight: .semibold, design: .rounded))
                     .foregroundColor(valueColor)
+                    .lineLimit(1)
             }
 
             Spacer()
+
+            if showChevron {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppColors.textSecondary)
+            }
         }
         .padding(.horizontal, AppSpacing.md)
         .padding(.vertical, AppSpacing.sm + 4)
