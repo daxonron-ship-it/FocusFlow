@@ -12,6 +12,8 @@ final class TimerViewModel: ObservableObject {
     @Published var currentStreak: Int = 0
     @Published var hasRequestedNotificationPermission: Bool = false
     @Published var showBlockingFlow: Bool = false
+    @Published var showQuitFlow: Bool = false
+    @Published private(set) var appSettings: AppSettings?
 
     let timerService: TimerService
     let blockingManager: BlockingManager
@@ -52,6 +54,7 @@ final class TimerViewModel: ObservableObject {
     func setModelContext(_ context: ModelContext) {
         self.modelContext = context
         loadUserStats()
+        loadAppSettings()
     }
 
     // MARK: - Computed Properties
@@ -127,6 +130,40 @@ final class TimerViewModel: ObservableObject {
         blockingManager.hasSelectedApps
     }
 
+    // MARK: - Strict Mode Properties
+
+    var isStrictModeEnabled: Bool {
+        appSettings?.isStrictModeActive ?? false
+    }
+
+    var strictModeDisplayValue: String {
+        isStrictModeEnabled ? "Strict" : "Normal"
+    }
+
+    // MARK: - Strict Mode Actions
+
+    func toggleStrictMode() {
+        guard let settings = appSettings, let context = modelContext else { return }
+
+        if settings.strictModeEnabled {
+            // Disable strict mode
+            settings.strictModeEnabled = false
+            settings.strictModeEnabledAt = nil
+        } else {
+            // Enable strict mode
+            settings.strictModeEnabled = true
+            settings.strictModeEnabledAt = Date()
+        }
+
+        do {
+            try context.save()
+            objectWillChange.send()
+            HapticManager.shared.mediumImpact()
+        } catch {
+            print("Failed to save strict mode setting: \(error)")
+        }
+    }
+
     // MARK: - Blocking Actions
 
     func blockingCardTapped() {
@@ -154,7 +191,19 @@ final class TimerViewModel: ObservableObject {
         }
     }
 
-    func stopSession() {
+    /// Attempts to stop the session - shows quit flow if strict mode is enabled
+    func attemptStopSession() {
+        if isStrictModeEnabled {
+            // Show quit flow
+            showQuitFlow = true
+        } else {
+            // Direct stop without friction
+            confirmStopSession()
+        }
+    }
+
+    /// Confirms session stop after completing quit flow (or when strict mode is off)
+    func confirmStopSession() {
         // Stop app blocking
         blockingManager.stopBlocking()
 
@@ -164,6 +213,17 @@ final class TimerViewModel: ObservableObject {
         }
         timerService.stop()
         timerService.reset()
+        showQuitFlow = false
+    }
+
+    /// Cancel quit flow and return to timer
+    func cancelQuitFlow() {
+        showQuitFlow = false
+    }
+
+    /// Legacy method for backwards compatibility
+    func stopSession() {
+        attemptStopSession()
     }
 
     func onAppear() {
@@ -240,7 +300,7 @@ final class TimerViewModel: ObservableObject {
         timerService.startSession(
             duration: selectedDuration,
             sessionType: sessionType,
-            strictModeEnabled: false // Will be connected to settings in later milestone
+            strictModeEnabled: isStrictModeEnabled
         )
 
         // Start app blocking for work sessions
@@ -330,6 +390,36 @@ final class TimerViewModel: ObservableObject {
 
         let stats = fetchOrCreateUserStats(context: context)
         currentStreak = stats.currentStreak
+    }
+
+    private func loadAppSettings() {
+        guard let context = modelContext else { return }
+        appSettings = fetchOrCreateAppSettings(context: context)
+    }
+
+    private func fetchOrCreateAppSettings(context: ModelContext) -> AppSettings {
+        let descriptor = FetchDescriptor<AppSettings>()
+
+        do {
+            let results = try context.fetch(descriptor)
+            if let existing = results.first {
+                return existing
+            }
+        } catch {
+            print("Failed to fetch app settings: \(error)")
+        }
+
+        // Create new settings if none exist
+        let newSettings = AppSettings()
+        context.insert(newSettings)
+
+        do {
+            try context.save()
+        } catch {
+            print("Failed to save new app settings: \(error)")
+        }
+
+        return newSettings
     }
 
     private func fetchOrCreateUserStats(context: ModelContext) -> UserStats {

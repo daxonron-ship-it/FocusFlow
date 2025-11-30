@@ -692,3 +692,213 @@ struct TimerViewModelBlockingTests {
         #expect(viewModel.blockingManager.isBlocking == false)
     }
 }
+
+// MARK: - StringNormalization Tests
+
+struct StringNormalizationTests {
+    @Test func basicNormalization() {
+        let result = StringNormalization.normalizeForComparison("Hello World")
+        #expect(result == "hello world")
+    }
+
+    @Test func smartQuoteNormalization() {
+        // Test curly single quotes
+        let withCurlyApostrophe = "I\u{2019}m testing"  // I'm testing
+        let normalized = StringNormalization.normalizeForComparison(withCurlyApostrophe)
+        #expect(normalized == "i'm testing")
+    }
+
+    @Test func smartDoubleQuoteNormalization() {
+        // Test curly double quotes
+        let withCurlyQuotes = "\u{201C}Hello\u{201D}"  // "Hello"
+        let normalized = StringNormalization.normalizeForComparison(withCurlyQuotes)
+        #expect(normalized == "\"hello\"")
+    }
+
+    @Test func dashNormalization() {
+        // En dash
+        let withEnDash = "one\u{2013}two"
+        #expect(StringNormalization.normalizeForComparison(withEnDash) == "one-two")
+
+        // Em dash
+        let withEmDash = "one\u{2014}two"
+        #expect(StringNormalization.normalizeForComparison(withEmDash) == "one-two")
+    }
+
+    @Test func matchesExactText() {
+        let phrase = "End session early"
+        let input = "End session early"
+        #expect(StringNormalization.matches(userInput: input, challengePhrase: phrase) == true)
+    }
+
+    @Test func matchesCaseInsensitive() {
+        let phrase = "End Session Early"
+        let input = "end session early"
+        #expect(StringNormalization.matches(userInput: input, challengePhrase: phrase) == true)
+    }
+
+    @Test func matchesWithSmartQuotes() {
+        let phrase = "I'm choosing distraction"
+        let inputWithCurlyQuote = "I\u{2019}m choosing distraction"
+        #expect(StringNormalization.matches(userInput: inputWithCurlyQuote, challengePhrase: phrase) == true)
+    }
+
+    @Test func noMatchOnDifferentText() {
+        let phrase = "End session early"
+        let input = "Stop the timer"
+        #expect(StringNormalization.matches(userInput: input, challengePhrase: phrase) == false)
+    }
+
+    @Test func characterStatusesAllCorrect() {
+        let phrase = "test"
+        let input = "test"
+        let statuses = StringNormalization.characterStatuses(userInput: input, challengePhrase: phrase)
+
+        #expect(statuses.count == 4)
+        #expect(statuses.allSatisfy { $0 == .correct })
+    }
+
+    @Test func characterStatusesWithError() {
+        let phrase = "test"
+        let input = "tesx"  // Wrong last character
+        let statuses = StringNormalization.characterStatuses(userInput: input, challengePhrase: phrase)
+
+        #expect(statuses.count == 4)
+        #expect(statuses[0] == .correct)
+        #expect(statuses[1] == .correct)
+        #expect(statuses[2] == .correct)
+        #expect(statuses[3] == .incorrect)
+    }
+
+    @Test func characterStatusesErrorStopsPending() {
+        let phrase = "testing"
+        let input = "texxing"  // Error at index 2
+        let statuses = StringNormalization.characterStatuses(userInput: input, challengePhrase: phrase)
+
+        #expect(statuses[0] == .correct)  // t
+        #expect(statuses[1] == .correct)  // e
+        #expect(statuses[2] == .incorrect)  // x (first error)
+        #expect(statuses[3] == .pending)  // x
+        #expect(statuses[4] == .pending)  // i
+        #expect(statuses[5] == .pending)  // n
+        #expect(statuses[6] == .pending)  // g
+    }
+
+    @Test func firstMismatchIndexNoError() {
+        let phrase = "hello"
+        let input = "hel"
+        let index = StringNormalization.firstMismatchIndex(userInput: input, challengePhrase: phrase)
+        #expect(index == nil)
+    }
+
+    @Test func firstMismatchIndexWithError() {
+        let phrase = "hello"
+        let input = "helxo"
+        let index = StringNormalization.firstMismatchIndex(userInput: input, challengePhrase: phrase)
+        #expect(index == 3)
+    }
+
+    @Test func firstMismatchIndexInputTooLong() {
+        let phrase = "hi"
+        let input = "hi there"
+        let index = StringNormalization.firstMismatchIndex(userInput: input, challengePhrase: phrase)
+        #expect(index == 2)  // Space after "hi"
+    }
+
+    @Test func isCompleteTrue() {
+        let phrase = "done"
+        let input = "done"
+        #expect(StringNormalization.isComplete(userInput: input, challengePhrase: phrase) == true)
+    }
+
+    @Test func isCompleteFalsePartialInput() {
+        let phrase = "done"
+        let input = "don"
+        #expect(StringNormalization.isComplete(userInput: input, challengePhrase: phrase) == false)
+    }
+
+    @Test func isCompleteFalseWithError() {
+        let phrase = "done"
+        let input = "donx"
+        #expect(StringNormalization.isComplete(userInput: input, challengePhrase: phrase) == false)
+    }
+}
+
+// MARK: - Strict Mode / Quit Flow Tests
+
+@MainActor
+struct StrictModeTests {
+    @Test func strictModeInitiallyDisabled() async {
+        let viewModel = TimerViewModel()
+        #expect(viewModel.isStrictModeEnabled == false)
+    }
+
+    @Test func strictModeDisplayValueNormal() async {
+        let viewModel = TimerViewModel()
+        #expect(viewModel.strictModeDisplayValue == "Normal")
+    }
+
+    @Test func showQuitFlowInitiallyFalse() async {
+        let viewModel = TimerViewModel()
+        #expect(viewModel.showQuitFlow == false)
+    }
+
+    @Test func attemptStopWithoutStrictModeStopsDirectly() async {
+        let viewModel = TimerViewModel()
+        viewModel.primaryButtonTapped()  // Start session
+        #expect(viewModel.timerService.isRunning == true)
+
+        viewModel.attemptStopSession()
+
+        // Without strict mode, should stop directly
+        #expect(viewModel.timerService.state == .idle)
+        #expect(viewModel.showQuitFlow == false)
+    }
+
+    @Test func cancelQuitFlowHidesSheet() async {
+        let viewModel = TimerViewModel()
+        viewModel.showQuitFlow = true
+
+        viewModel.cancelQuitFlow()
+
+        #expect(viewModel.showQuitFlow == false)
+    }
+
+    @Test func confirmStopSessionEndsSession() async {
+        let viewModel = TimerViewModel()
+        viewModel.primaryButtonTapped()  // Start session
+        viewModel.showQuitFlow = true
+
+        viewModel.confirmStopSession()
+
+        #expect(viewModel.timerService.state == .idle)
+        #expect(viewModel.showQuitFlow == false)
+    }
+}
+
+// MARK: - Challenge Phrase Tests
+
+struct ChallengePhraseTests {
+    @Test func gentleToneHasPhrases() {
+        let phrases = StrictModeTone.gentle.phrases
+        #expect(phrases.count == 3)
+        #expect(phrases.contains("I need a break right now"))
+    }
+
+    @Test func neutralToneHasPhrases() {
+        let phrases = StrictModeTone.neutral.phrases
+        #expect(phrases.count == 3)
+        #expect(phrases.contains("End session early"))
+    }
+
+    @Test func strictToneHasPhrases() {
+        let phrases = StrictModeTone.strict.phrases
+        #expect(phrases.count == 3)
+        #expect(phrases.contains("I am choosing distraction over my goals"))
+    }
+
+    @Test func customToneEmptyPhrases() {
+        let phrases = StrictModeTone.custom.phrases
+        #expect(phrases.isEmpty)
+    }
+}

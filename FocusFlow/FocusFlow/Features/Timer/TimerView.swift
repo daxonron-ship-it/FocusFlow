@@ -56,6 +56,16 @@ struct TimerView: View {
                 BlockingFlowView(blockingManager: viewModel.blockingManager)
             }
         }
+        .sheet(isPresented: $viewModel.showQuitFlow) {
+            if let settings = viewModel.appSettings {
+                QuitFlowView(
+                    settings: settings,
+                    currentStreak: viewModel.currentStreak,
+                    onConfirmQuit: viewModel.confirmStopSession,
+                    onCancel: viewModel.cancelQuitFlow
+                )
+            }
+        }
     }
 
     private var mainContent: some View {
@@ -118,7 +128,7 @@ struct TimerView: View {
 
                 // Stop button (only show during active session)
                 if viewModel.showStopButton {
-                    Button(action: viewModel.stopSession) {
+                    Button(action: viewModel.attemptStopSession) {
                         Text("End Session")
                             .font(.system(size: AppFontSize.body, weight: .medium, design: .rounded))
                             .foregroundColor(AppColors.danger)
@@ -149,15 +159,24 @@ struct TimerView: View {
                     .buttonStyle(.plain)
                     .disabled(viewModel.isSessionActive)
 
-                    // Mode card - placeholder for Strict Mode (future milestone)
-                    InfoCard(
-                        icon: "lock.fill",
-                        title: "Mode",
-                        value: "Strict",
-                        iconColor: Color.yellow,
-                        valueColor: AppColors.accent,
-                        isPlaceholder: true
-                    )
+                    // Mode card - toggle Strict Mode (only when idle)
+                    Button(action: {
+                        if !viewModel.isSessionActive {
+                            viewModel.toggleStrictMode()
+                        }
+                    }) {
+                        InfoCard(
+                            icon: viewModel.isStrictModeEnabled ? "lock.fill" : "lock.open.fill",
+                            title: "Mode",
+                            value: viewModel.strictModeDisplayValue,
+                            iconColor: viewModel.isStrictModeEnabled ? AppColors.accent : AppColors.textSecondary,
+                            valueColor: viewModel.isStrictModeEnabled ? AppColors.accent : AppColors.textSecondary,
+                            isPlaceholder: !viewModel.isStrictModeEnabled,
+                            showChevron: !viewModel.isSessionActive
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(viewModel.isSessionActive)
                 }
                 .padding(.horizontal, AppSpacing.lg)
                 .padding(.bottom, AppSpacing.xl)
