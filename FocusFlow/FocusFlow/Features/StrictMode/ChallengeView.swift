@@ -2,12 +2,15 @@ import SwiftUI
 
 /// Challenge view where user must type the phrase to quit
 /// Uses keyboard-aware layout with ScrollViewReader to keep input visible
+/// Shows emergency bypass hint after 3 failed attempts
 struct ChallengeView: View {
     let challengePhrase: String
     let onComplete: () -> Void
     let onGoBack: () -> Void
 
     @State private var userInput: String = ""
+    @State private var failedAttempts: Int = 0
+    @State private var previousErrorCount: Int = 0
     @FocusState private var isInputFocused: Bool
 
     private var isMatchComplete: Bool {
@@ -16,6 +19,11 @@ struct ChallengeView: View {
 
     private var hasError: Bool {
         StringNormalization.firstMismatchIndex(userInput: userInput, challengePhrase: challengePhrase) != nil
+    }
+
+    /// Show hint after 3 failed attempts
+    private var showBypassHint: Bool {
+        failedAttempts >= 3
     }
 
     var body: some View {
@@ -63,6 +71,26 @@ struct ChallengeView: View {
                         .id("error")
                     }
 
+                    // Emergency bypass hint (after 3 failed attempts)
+                    if showBypassHint {
+                        HStack(spacing: AppSpacing.sm) {
+                            Image(systemName: "lightbulb.fill")
+                                .foregroundColor(AppColors.textSecondary)
+
+                            Text("Stuck? Long-press the countdown timer.")
+                                .font(.system(size: AppFontSize.caption, weight: .regular, design: .rounded))
+                                .foregroundColor(AppColors.textSecondary)
+                        }
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.sm)
+                        .background(
+                            RoundedRectangle(cornerRadius: AppCornerRadius.small)
+                                .fill(AppColors.cardBackground)
+                        )
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .id("hint")
+                    }
+
                     // Text input field
                     VStack(alignment: .leading, spacing: AppSpacing.xs) {
                         TextField("Type here...", text: $userInput, axis: .vertical)
@@ -90,6 +118,9 @@ struct ChallengeView: View {
                             .onSubmit {
                                 if isMatchComplete {
                                     completeChallenge()
+                                } else {
+                                    // User pressed submit with incorrect text - count as failed attempt
+                                    trackFailedAttempt()
                                 }
                             }
                     }
@@ -120,7 +151,14 @@ struct ChallengeView: View {
                     // Action buttons
                     VStack(spacing: AppSpacing.md) {
                         // End Session button (enabled only when phrase matches)
-                        Button(action: completeChallenge) {
+                        Button(action: {
+                            if isMatchComplete {
+                                completeChallenge()
+                            } else {
+                                // Tapping button with incorrect text counts as failed attempt
+                                trackFailedAttempt()
+                            }
+                        }) {
                             Text("End Session")
                                 .font(.system(size: AppFontSize.headline, weight: .semibold, design: .rounded))
                                 .foregroundColor(isMatchComplete ? AppColors.textPrimary : AppColors.textSecondary)
@@ -160,20 +198,44 @@ struct ChallengeView: View {
                     }
                 }
             }
-            .onChange(of: userInput) { _, _ in
+            .onChange(of: userInput) { oldValue, newValue in
                 // Light haptic on each keystroke
-                if !userInput.isEmpty {
+                if !newValue.isEmpty {
                     HapticManager.shared.selectionChanged()
                 }
+
+                // Track failed attempts when user makes a significant error
+                // (types wrong character after having a correct prefix)
+                let currentErrorCount = countErrors(in: newValue)
+                if currentErrorCount > previousErrorCount && newValue.count >= oldValue.count {
+                    // User typed a wrong character (not just deleting)
+                    trackFailedAttempt()
+                }
+                previousErrorCount = currentErrorCount
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AppColors.background.ignoresSafeArea())
+        .animation(.easeInOut(duration: 0.3), value: showBypassHint)
         .onAppear {
             // Auto-focus the text field
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 isInputFocused = true
             }
+        }
+    }
+
+    private func countErrors(in input: String) -> Int {
+        // Count how many times user has had an error at the current position
+        // For simplicity, just check if there's currently an error
+        return StringNormalization.firstMismatchIndex(userInput: input, challengePhrase: challengePhrase) != nil ? 1 : 0
+    }
+
+    private func trackFailedAttempt() {
+        // Only increment if user has typed something substantial (at least 3 chars)
+        // to avoid counting early typos
+        if userInput.count >= 3 {
+            failedAttempts += 1
         }
     }
 

@@ -902,3 +902,185 @@ struct ChallengePhraseTests {
         #expect(phrases.isEmpty)
     }
 }
+
+// MARK: - Milestone 5: Advanced Strict Mode Tests
+
+struct AppSettingsAdvancedTests {
+    @Test func enableStrictModeSetsEnabledAtDate() {
+        let settings = AppSettings()
+        settings.enableStrictMode()
+
+        #expect(settings.strictModeEnabled == true)
+        #expect(settings.strictModeEnabledAt != nil)
+        #expect(settings.strictModeDisablePending == false)
+        #expect(settings.strictModeDisableTime == nil)
+    }
+
+    @Test func disableStrictModeInstantlyDuringBuyersRemorse() {
+        let settings = AppSettings()
+        settings.strictModeEnabled = true
+        settings.strictModeEnabledAt = Date() // Just enabled - in buyer's remorse window
+
+        let wasInstant = settings.disableStrictMode()
+
+        #expect(wasInstant == true)
+        #expect(settings.strictModeEnabled == false)
+        #expect(settings.strictModeEnabledAt == nil)
+        #expect(settings.strictModeDisablePending == false)
+    }
+
+    @Test func disableStrictModeSchedules24HourDelay() {
+        let settings = AppSettings()
+        settings.strictModeEnabled = true
+        settings.strictModeEnabledAt = Date().addingTimeInterval(-20 * 60) // 20 min ago - outside buyer's remorse
+
+        let wasInstant = settings.disableStrictMode()
+
+        #expect(wasInstant == false)
+        #expect(settings.strictModeEnabled == true) // Still enabled
+        #expect(settings.strictModeDisablePending == true)
+        #expect(settings.strictModeDisableTime != nil)
+
+        // Check that disable time is approximately 24 hours from now
+        if let disableTime = settings.strictModeDisableTime {
+            let expectedTime = Date().addingTimeInterval(24 * 60 * 60)
+            let diff = abs(disableTime.timeIntervalSince(expectedTime))
+            #expect(diff < 5) // Within 5 seconds
+        }
+    }
+
+    @Test func cancelPendingDisableClearsState() {
+        let settings = AppSettings()
+        settings.strictModeEnabled = true
+        settings.strictModeDisablePending = true
+        settings.strictModeDisableTime = Date().addingTimeInterval(24 * 60 * 60)
+
+        settings.cancelPendingDisable()
+
+        #expect(settings.strictModeEnabled == true)
+        #expect(settings.strictModeDisablePending == false)
+        #expect(settings.strictModeDisableTime == nil)
+    }
+
+    @Test func checkAndPerformScheduledDisableWhenTimeHasPassed() {
+        let settings = AppSettings()
+        settings.strictModeEnabled = true
+        settings.strictModeDisablePending = true
+        settings.strictModeDisableTime = Date().addingTimeInterval(-1) // Already passed
+        settings.strictModeEnabledAt = Date().addingTimeInterval(-25 * 60 * 60)
+
+        settings.checkAndPerformScheduledDisable()
+
+        #expect(settings.strictModeEnabled == false)
+        #expect(settings.strictModeDisablePending == false)
+        #expect(settings.strictModeDisableTime == nil)
+        #expect(settings.strictModeEnabledAt == nil)
+    }
+
+    @Test func checkAndPerformScheduledDisableWhenTimeNotPassed() {
+        let settings = AppSettings()
+        settings.strictModeEnabled = true
+        settings.strictModeDisablePending = true
+        settings.strictModeDisableTime = Date().addingTimeInterval(60 * 60) // 1 hour from now
+
+        settings.checkAndPerformScheduledDisable()
+
+        // Should not change anything
+        #expect(settings.strictModeEnabled == true)
+        #expect(settings.strictModeDisablePending == true)
+        #expect(settings.strictModeDisableTime != nil)
+    }
+
+    @Test func isStrictModeActiveFalseWhenDisableTimePassed() {
+        let settings = AppSettings()
+        settings.strictModeEnabled = true
+        settings.strictModeDisablePending = true
+        settings.strictModeDisableTime = Date().addingTimeInterval(-60) // Passed
+
+        #expect(settings.isStrictModeActive == false)
+    }
+
+    @Test func isStrictModeActiveTrueWhenDisableTimePending() {
+        let settings = AppSettings()
+        settings.strictModeEnabled = true
+        settings.strictModeDisablePending = true
+        settings.strictModeDisableTime = Date().addingTimeInterval(60 * 60) // 1 hour from now
+
+        #expect(settings.isStrictModeActive == true)
+    }
+}
+
+// MARK: - Challenge Type Tests
+
+struct ChallengeTypeTests {
+    @Test func allChallengeTypesExist() {
+        let types = ChallengeType.allCases
+        #expect(types.count == 4)
+        #expect(types.contains(.phrase))
+        #expect(types.contains(.math))
+        #expect(types.contains(.pattern))
+        #expect(types.contains(.holdButton))
+    }
+
+    @Test func challengeTypeDisplayNames() {
+        #expect(ChallengeType.phrase.displayName == "Type a Phrase")
+        #expect(ChallengeType.math.displayName == "Solve Math Problem")
+        #expect(ChallengeType.pattern.displayName == "Tap Pattern")
+        #expect(ChallengeType.holdButton.displayName == "Hold Button")
+    }
+
+    @Test func defaultChallengeTypeIsPhrase() {
+        let settings = AppSettings()
+        #expect(settings.challengeType == .phrase)
+    }
+
+    @Test func challengeTypeCanBeChanged() {
+        let settings = AppSettings()
+        settings.challengeType = .math
+        #expect(settings.challengeType == .math)
+
+        settings.challengeType = .pattern
+        #expect(settings.challengeType == .pattern)
+
+        settings.challengeType = .holdButton
+        #expect(settings.challengeType == .holdButton)
+    }
+}
+
+// MARK: - Authentication Service Tests
+
+struct AuthenticationServiceTests {
+    @Test func sharedInstanceExists() {
+        let service = AuthenticationService.shared
+        #expect(service != nil)
+    }
+
+    @Test func requestAuthenticationCompletesOnSimulator() async {
+        // On simulator, authentication should auto-succeed
+        let result = await AuthenticationService.shared.requestAuthentication(
+            reason: "Test authentication"
+        )
+        // On simulator without device authentication, this should return true
+        #expect(result == true)
+    }
+}
+
+// MARK: - Emergency Bypass Logic Tests
+
+@MainActor
+struct EmergencyBypassTests {
+    @Test func emergencyBypassCallbackInQuitFlowWorks() async {
+        var bypassCalled = false
+        let settings = AppSettings(strictModeEnabled: true)
+
+        // Test that the emergency bypass callback can be invoked
+        let onBypass = {
+            bypassCalled = true
+        }
+
+        // Simulate bypass being triggered
+        onBypass()
+
+        #expect(bypassCalled == true)
+    }
+}

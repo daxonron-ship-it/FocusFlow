@@ -44,4 +44,51 @@ final class AppSettings {
         }
         return strictModeEnabled
     }
+
+    /// Check and perform scheduled disable if time has passed
+    /// Call this on app launch and periodically to ensure disable happens
+    func checkAndPerformScheduledDisable() {
+        if strictModeDisablePending,
+           let disableTime = strictModeDisableTime,
+           Date() >= disableTime {
+            // Time has passed - actually disable strict mode
+            strictModeEnabled = false
+            strictModeDisablePending = false
+            strictModeDisableTime = nil
+            strictModeEnabledAt = nil
+        }
+    }
+
+    /// Enable strict mode with buyer's remorse window
+    func enableStrictMode() {
+        strictModeEnabled = true
+        strictModeEnabledAt = Date()
+        strictModeDisablePending = false
+        strictModeDisableTime = nil
+    }
+
+    /// Disable strict mode - either instantly (if in buyer's remorse) or schedule for 24h
+    /// - Returns: true if disabled instantly, false if scheduled
+    @discardableResult
+    func disableStrictMode() -> Bool {
+        if isInBuyersRemorseWindow {
+            // Instant disable during buyer's remorse window
+            strictModeEnabled = false
+            strictModeEnabledAt = nil
+            strictModeDisablePending = false
+            strictModeDisableTime = nil
+            return true
+        } else {
+            // Schedule 24-hour delayed disable
+            strictModeDisablePending = true
+            strictModeDisableTime = Date().addingTimeInterval(24 * 60 * 60)
+            return false
+        }
+    }
+
+    /// Cancel a pending disable
+    func cancelPendingDisable() {
+        strictModeDisablePending = false
+        strictModeDisableTime = nil
+    }
 }

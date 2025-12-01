@@ -2,13 +2,14 @@ import SwiftUI
 
 /// Container view that manages the 3-step quit flow:
 /// 1. Delay Timer (10 seconds)
-/// 2. Challenge (type phrase)
+/// 2. Challenge (type phrase, math, pattern, or hold button)
 /// 3. Streak Warning
 struct QuitFlowView: View {
     let settings: AppSettings
     let currentStreak: Int
     let onConfirmQuit: () -> Void
     let onCancel: () -> Void
+    let onEmergencyBypass: () -> Void
 
     @State private var currentStep: QuitFlowStep = .delay
 
@@ -40,7 +41,8 @@ struct QuitFlowView: View {
                             currentStep = .challenge
                         }
                     },
-                    onCancel: onCancel
+                    onCancel: onCancel,
+                    onEmergencyBypass: onEmergencyBypass
                 )
                 .transition(.asymmetric(
                     insertion: .opacity,
@@ -48,22 +50,11 @@ struct QuitFlowView: View {
                 ))
 
             case .challenge:
-                ChallengeView(
-                    challengePhrase: challengePhrase,
-                    onComplete: {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            currentStep = .streakWarning
-                        }
-                    },
-                    onGoBack: {
-                        // Going back from challenge cancels the whole flow
-                        onCancel()
-                    }
-                )
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing).combined(with: .opacity),
-                    removal: .move(edge: .leading).combined(with: .opacity)
-                ))
+                challengeView
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    ))
 
             case .streakWarning:
                 if currentStreak > 0 {
@@ -91,46 +82,142 @@ struct QuitFlowView: View {
         .animation(.easeInOut(duration: 0.3), value: currentStep)
         .interactiveDismissDisabled()  // Prevent swipe-to-dismiss during flow
     }
+
+    /// Returns the appropriate challenge view based on settings
+    @ViewBuilder
+    private var challengeView: some View {
+        switch settings.challengeType {
+        case .phrase:
+            ChallengeView(
+                challengePhrase: challengePhrase,
+                onComplete: {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        currentStep = .streakWarning
+                    }
+                },
+                onGoBack: {
+                    // Going back from challenge cancels the whole flow
+                    onCancel()
+                }
+            )
+
+        case .math:
+            MathChallengeView(
+                onComplete: {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        currentStep = .streakWarning
+                    }
+                },
+                onGoBack: {
+                    onCancel()
+                }
+            )
+
+        case .pattern:
+            PatternChallengeView(
+                onComplete: {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        currentStep = .streakWarning
+                    }
+                },
+                onGoBack: {
+                    onCancel()
+                }
+            )
+
+        case .holdButton:
+            HoldButtonChallengeView(
+                onComplete: {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        currentStep = .streakWarning
+                    }
+                },
+                onGoBack: {
+                    onCancel()
+                }
+            )
+        }
+    }
 }
 
-#Preview("Full Flow - Strict Tone") {
+// MARK: - Convenience initializer for backward compatibility
+
+extension QuitFlowView {
+    /// Convenience initializer without emergency bypass callback
+    init(
+        settings: AppSettings,
+        currentStreak: Int,
+        onConfirmQuit: @escaping () -> Void,
+        onCancel: @escaping () -> Void
+    ) {
+        self.settings = settings
+        self.currentStreak = currentStreak
+        self.onConfirmQuit = onConfirmQuit
+        self.onCancel = onCancel
+        self.onEmergencyBypass = onConfirmQuit // Default: same as confirm quit
+    }
+}
+
+#Preview("Full Flow - Phrase Challenge") {
     let settings = AppSettings(
         strictModeEnabled: true,
-        strictModeTone: .strict
+        strictModeTone: .strict,
+        challengeType: .phrase
     )
 
     QuitFlowView(
         settings: settings,
         currentStreak: 12,
         onConfirmQuit: { print("Quit confirmed") },
-        onCancel: { print("Cancelled") }
+        onCancel: { print("Cancelled") },
+        onEmergencyBypass: { print("Emergency bypass") }
     )
 }
 
-#Preview("Full Flow - Gentle Tone") {
+#Preview("Full Flow - Math Challenge") {
     let settings = AppSettings(
         strictModeEnabled: true,
-        strictModeTone: .gentle
+        strictModeTone: .neutral,
+        challengeType: .math
     )
 
     QuitFlowView(
         settings: settings,
         currentStreak: 5,
         onConfirmQuit: { print("Quit confirmed") },
-        onCancel: { print("Cancelled") }
+        onCancel: { print("Cancelled") },
+        onEmergencyBypass: { print("Emergency bypass") }
     )
 }
 
-#Preview("Full Flow - No Streak") {
+#Preview("Full Flow - Pattern Challenge") {
     let settings = AppSettings(
         strictModeEnabled: true,
-        strictModeTone: .neutral
+        strictModeTone: .gentle,
+        challengeType: .pattern
+    )
+
+    QuitFlowView(
+        settings: settings,
+        currentStreak: 3,
+        onConfirmQuit: { print("Quit confirmed") },
+        onCancel: { print("Cancelled") },
+        onEmergencyBypass: { print("Emergency bypass") }
+    )
+}
+
+#Preview("Full Flow - Hold Button Challenge") {
+    let settings = AppSettings(
+        strictModeEnabled: true,
+        strictModeTone: .neutral,
+        challengeType: .holdButton
     )
 
     QuitFlowView(
         settings: settings,
         currentStreak: 0,
         onConfirmQuit: { print("Quit confirmed") },
-        onCancel: { print("Cancelled") }
+        onCancel: { print("Cancelled") },
+        onEmergencyBypass: { print("Emergency bypass") }
     )
 }
