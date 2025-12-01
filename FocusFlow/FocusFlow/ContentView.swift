@@ -9,7 +9,11 @@ import SwiftUI
 import SwiftData
 
 struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
+
     @State private var selectedTab: Tab = .focus
+    @StateObject private var scheduleManager = ScheduleManager.shared
 
     enum Tab {
         case focus
@@ -45,42 +49,19 @@ struct ContentView: View {
                 .tag(Tab.settings)
         }
         .tint(AppColors.accent)
-    }
-}
-
-// MARK: - Schedule List View (Placeholder for Milestone 7)
-
-struct ScheduleListView: View {
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: AppSpacing.lg) {
-                Spacer()
-
-                Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 64))
-                    .foregroundColor(AppColors.textSecondary)
-
-                Text("Coming Soon")
-                    .font(.system(size: AppFontSize.headline, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppColors.textPrimary)
-
-                Text("Schedule recurring focus sessions to build consistent habits.")
-                    .font(.system(size: AppFontSize.body, design: .rounded))
-                    .foregroundColor(AppColors.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, AppSpacing.xl)
-
-                Spacer()
+        .onAppear {
+            scheduleManager.setModelContext(modelContext)
+            scheduleManager.checkAndActivateSchedules()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                scheduleManager.checkAndActivateSchedules()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(AppColors.background)
-            .navigationTitle("Schedules")
-            .navigationBarTitleDisplayMode(.large)
         }
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: [FocusSession.self, UserStats.self, AppSettings.self], inMemory: true)
+        .modelContainer(for: [FocusSession.self, UserStats.self, AppSettings.self, Schedule.self], inMemory: true)
 }

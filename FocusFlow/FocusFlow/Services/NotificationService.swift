@@ -10,11 +10,25 @@ final class NotificationService: ObservableObject {
 
     private let notificationCenter = UNUserNotificationCenter.current()
     private let sessionCompleteIdentifier = "session-complete"
+    private let scheduleCompleteIdentifier = "schedule-complete"
 
     private init() {
         Task {
             await checkAuthorizationStatus()
+            setupNotificationCategories()
         }
+    }
+
+    private func setupNotificationCategories() {
+        // Schedule start category with action to open app
+        let scheduleStartCategory = UNNotificationCategory(
+            identifier: "SCHEDULE_START",
+            actions: [],
+            intentIdentifiers: [],
+            options: .customDismissAction
+        )
+
+        notificationCenter.setNotificationCategories([scheduleStartCategory])
     }
 
     // MARK: - Permission Handling
@@ -80,5 +94,51 @@ final class NotificationService: ObservableObject {
     func cancelAllNotifications() {
         notificationCenter.removeAllPendingNotificationRequests()
         notificationCenter.removeAllDeliveredNotifications()
+    }
+
+    // MARK: - Schedule Notifications
+
+    func scheduleScheduleComplete(at date: Date, scheduleName: String, duration: TimeInterval) {
+        let content = UNMutableNotificationContent()
+
+        let minutes = Int(duration / 60)
+        let hours = minutes / 60
+        let remainingMinutes = minutes % 60
+
+        var durationString: String
+        if hours > 0 && remainingMinutes > 0 {
+            durationString = "\(hours)h \(remainingMinutes)m"
+        } else if hours > 0 {
+            durationString = "\(hours) hour\(hours > 1 ? "s" : "")"
+        } else {
+            durationString = "\(minutes) minutes"
+        }
+
+        content.title = "Scheduled Session Complete 🎉"
+        content.body = scheduleName.isEmpty
+            ? "Great work! You focused for \(durationString)."
+            : "\(scheduleName) complete! You focused for \(durationString)."
+        content.sound = .default
+        content.badge = nil
+
+        let timeInterval = date.timeIntervalSinceNow
+        guard timeInterval > 0 else { return }
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: timeInterval, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: scheduleCompleteIdentifier,
+            content: content,
+            trigger: trigger
+        )
+
+        notificationCenter.add(request) { error in
+            if let error = error {
+                print("Failed to schedule notification: \(error)")
+            }
+        }
+    }
+
+    func cancelScheduleCompleteNotification() {
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: [scheduleCompleteIdentifier])
     }
 }

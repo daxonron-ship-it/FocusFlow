@@ -3,6 +3,8 @@ import SwiftUI
 import SwiftData
 import Combine
 
+import FamilyControls
+
 @MainActor
 final class TimerViewModel: ObservableObject {
     @Published var selectedPreset: TimerPreset = .pomodoro25
@@ -14,11 +16,14 @@ final class TimerViewModel: ObservableObject {
     @Published var showBlockingFlow: Bool = false
     @Published var showQuitFlow: Bool = false
     @Published private(set) var appSettings: AppSettings?
+    @Published private(set) var currentSchedule: Schedule?
+    @Published var showScheduleActiveAlert: Bool = false
 
     let timerService: TimerService
     let blockingManager: BlockingManager
     private var modelContext: ModelContext?
     private var cancellables = Set<AnyCancellable>()
+    private var savedActivitySelection: FamilyActivitySelection?
 
     init(timerService: TimerService? = nil, blockingManager: BlockingManager? = nil) {
         self.timerService = timerService ?? TimerService()
@@ -140,6 +145,16 @@ final class TimerViewModel: ObservableObject {
         isStrictModeEnabled ? "Strict" : "Normal"
     }
 
+    // MARK: - Schedule Properties
+
+    var isScheduledSession: Bool {
+        currentSchedule != nil
+    }
+
+    var scheduleDisplayName: String {
+        currentSchedule?.name ?? ""
+    }
+
     // MARK: - Strict Mode Actions
 
     func toggleStrictMode() {
@@ -206,6 +221,12 @@ final class TimerViewModel: ObservableObject {
     func confirmStopSession() {
         // Stop app blocking
         blockingManager.stopBlocking()
+
+        // Restore app selection if this was a scheduled session
+        restoreAppSelectionIfNeeded()
+
+        // Cancel schedule completion notification
+        NotificationService.shared.cancelScheduleCompleteNotification()
 
         if let session = timerService.currentSession {
             // Record quit in stats
@@ -279,6 +300,76 @@ final class TimerViewModel: ObservableObject {
         timerService.reset()
     }
 
+    // MARK: - Schedule Actions
+
+    /// Start a session from a schedule
+    func startScheduledSession(_ schedule: Schedule) {
+        // Don't start if already in a session
+        guard !isSessionActive else {
+            showScheduleActiveAlert = true
+            return
+        }
+
+        currentSchedule = schedule
+        sessionType = .work
+
+        // Save current app selection and use schedule's blocked apps
+        savedActivitySelection = blockingManager.activitySelection
+
+        if let blockedAppsData = schedule.blockedAppsData,
+           let selection = try? JSONDecoder().decode(FamilyActivitySelection.self, from: blockedAppsData) {
+            blockingManager.activitySelection = selection
+        }
+
+        // Determine strict mode for this session
+        let useStrictMode = schedule.strictModeEnabled || isStrictModeEnabled
+
+        timerService.startSession(
+            duration: schedule.duration,
+            sessionType: .work,
+            strictModeEnabled: useStrictMode
+        )
+
+        // Start blocking
+        if blockingManager.hasSelectedApps {
+            blockingManager.startBlocking()
+        }
+
+        // Schedule completion notification
+        let endTime = Date().addingTimeInterval(schedule.duration)
+        NotificationService.shared.scheduleScheduleComplete(
+            at: endTime,
+            scheduleName: schedule.name,
+            duration: schedule.duration
+        )
+
+        Task {
+            await requestNotificationPermissionIfNeeded()
+        }
+
+        HapticManager.shared.mediumImpact()
+    }
+
+    /// Check and start any active scheduled sessions (called on app launch/foreground)
+    func checkAndStartScheduledSession() {
+        guard !isSessionActive else { return }
+
+        let scheduleManager = ScheduleManager.shared
+        if scheduleManager.isScheduleTriggered, let schedule = scheduleManager.activeSchedule {
+            startScheduledSession(schedule)
+            scheduleManager.clearActiveSchedule()
+        }
+    }
+
+    /// Called when session ends to restore original app selection
+    private func restoreAppSelectionIfNeeded() {
+        if let saved = savedActivitySelection {
+            blockingManager.activitySelection = saved
+            savedActivitySelection = nil
+        }
+        currentSchedule = nil
+    }
+
     // MARK: - Notification Permission
 
     func requestNotificationPermissionIfNeeded() async {
@@ -317,6 +408,12 @@ final class TimerViewModel: ObservableObject {
     private func handleSessionCompletion(_ session: FocusSession) {
         // Stop app blocking
         blockingManager.stopBlocking()
+
+        // Restore app selection if this was a scheduled session
+        restoreAppSelectionIfNeeded()
+
+        // Cancel schedule completion notification (session completed normally)
+        NotificationService.shared.cancelScheduleCompleteNotification()
 
         // Save to SwiftData
         saveSession(session)

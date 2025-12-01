@@ -15,6 +15,7 @@ struct FocusFlowApp: App {
             FocusSession.self,
             UserStats.self,
             AppSettings.self,
+            Schedule.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

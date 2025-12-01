@@ -1368,3 +1368,313 @@ struct StreakCalendarTests {
         #expect(weekday == 4)
     }
 }
+
+// MARK: - Milestone 7: Schedule Tests
+
+struct WeekdayEnumTests {
+    @Test func weekdayRawValues() {
+        #expect(Weekday.sunday.rawValue == 1)
+        #expect(Weekday.monday.rawValue == 2)
+        #expect(Weekday.tuesday.rawValue == 3)
+        #expect(Weekday.wednesday.rawValue == 4)
+        #expect(Weekday.thursday.rawValue == 5)
+        #expect(Weekday.friday.rawValue == 6)
+        #expect(Weekday.saturday.rawValue == 7)
+    }
+
+    @Test func weekdayShortNames() {
+        #expect(Weekday.sunday.shortName == "Su")
+        #expect(Weekday.monday.shortName == "Mo")
+        #expect(Weekday.tuesday.shortName == "Tu")
+        #expect(Weekday.wednesday.shortName == "We")
+        #expect(Weekday.thursday.shortName == "Th")
+        #expect(Weekday.friday.shortName == "Fr")
+        #expect(Weekday.saturday.shortName == "Sa")
+    }
+
+    @Test func weekdayFullNames() {
+        #expect(Weekday.sunday.fullName == "Sunday")
+        #expect(Weekday.monday.fullName == "Monday")
+        #expect(Weekday.tuesday.fullName == "Tuesday")
+        #expect(Weekday.wednesday.fullName == "Wednesday")
+        #expect(Weekday.thursday.fullName == "Thursday")
+        #expect(Weekday.friday.fullName == "Friday")
+        #expect(Weekday.saturday.fullName == "Saturday")
+    }
+
+    @Test func weekdaySingleLetters() {
+        #expect(Weekday.sunday.singleLetter == "S")
+        #expect(Weekday.monday.singleLetter == "M")
+        #expect(Weekday.tuesday.singleLetter == "T")
+        #expect(Weekday.wednesday.singleLetter == "W")
+        #expect(Weekday.thursday.singleLetter == "T")
+        #expect(Weekday.friday.singleLetter == "F")
+        #expect(Weekday.saturday.singleLetter == "S")
+    }
+
+    @Test func weekdayComparable() {
+        #expect(Weekday.monday < Weekday.friday)
+        #expect(Weekday.sunday < Weekday.saturday)
+        #expect(!(Weekday.saturday < Weekday.sunday))
+    }
+
+    @Test func weekdayAllCases() {
+        #expect(Weekday.allCases.count == 7)
+    }
+}
+
+struct ScheduleModelTests {
+    @Test func scheduleInitialization() {
+        let schedule = Schedule(
+            name: "Morning Focus",
+            activeDays: [2, 3, 4, 5, 6], // Mon-Fri
+            startHour: 9,
+            startMinute: 0,
+            duration: 3 * 60 * 60,
+            strictModeEnabled: true,
+            isActive: true
+        )
+
+        #expect(schedule.name == "Morning Focus")
+        #expect(schedule.activeDays == [2, 3, 4, 5, 6])
+        #expect(schedule.startHour == 9)
+        #expect(schedule.startMinute == 0)
+        #expect(schedule.duration == 3 * 60 * 60)
+        #expect(schedule.strictModeEnabled == true)
+        #expect(schedule.isActive == true)
+    }
+
+    @Test func scheduleDefaultValues() {
+        let schedule = Schedule()
+
+        #expect(schedule.name == "")
+        #expect(schedule.activeDays.isEmpty)
+        #expect(schedule.startHour == 9)
+        #expect(schedule.startMinute == 0)
+        #expect(schedule.duration == 60 * 60)
+        #expect(schedule.strictModeEnabled == false)
+        #expect(schedule.isActive == true)
+    }
+
+    @Test func scheduleActiveDaysSet() {
+        let schedule = Schedule(activeDays: [2, 4, 6]) // Mon, Wed, Fri
+
+        let daysSet = schedule.activeDaysSet
+        #expect(daysSet.contains(.monday))
+        #expect(daysSet.contains(.wednesday))
+        #expect(daysSet.contains(.friday))
+        #expect(!daysSet.contains(.sunday))
+        #expect(!daysSet.contains(.tuesday))
+    }
+
+    @Test func scheduleActiveDaysSetSetter() {
+        let schedule = Schedule()
+        schedule.activeDaysSet = Set([.monday, .wednesday, .friday])
+
+        #expect(schedule.activeDays.sorted() == [2, 4, 6])
+    }
+
+    @Test func scheduleFormattedStartTime() {
+        let schedule = Schedule(startHour: 9, startMinute: 30)
+        #expect(schedule.formattedStartTime.contains("9:30"))
+    }
+
+    @Test func scheduleFormattedDuration() {
+        let schedule1 = Schedule(duration: 60 * 60) // 1 hour
+        #expect(schedule1.formattedDuration.contains("1"))
+
+        let schedule2 = Schedule(duration: 90 * 60) // 1.5 hours
+        #expect(schedule2.formattedDuration.contains("1h 30m"))
+    }
+
+    @Test func scheduleDaysDescriptionDaily() {
+        let schedule = Schedule(activeDays: [1, 2, 3, 4, 5, 6, 7])
+        #expect(schedule.daysDescription == "Daily")
+    }
+
+    @Test func scheduleDaysDescriptionWeekdays() {
+        let schedule = Schedule(activeDays: [2, 3, 4, 5, 6])
+        #expect(schedule.daysDescription == "Weekdays")
+    }
+
+    @Test func scheduleDaysDescriptionWeekends() {
+        let schedule = Schedule(activeDays: [1, 7])
+        #expect(schedule.daysDescription == "Weekends")
+    }
+
+    @Test func scheduleDaysDescriptionCustom() {
+        let schedule = Schedule(activeDays: [2, 4]) // Mon, Wed
+        #expect(schedule.daysDescription == "Mo We")
+    }
+}
+
+struct ScheduleActiveCheckTests {
+    @Test func scheduleIsActiveOnCorrectDay() {
+        let calendar = Calendar.current
+        let today = Date()
+        let todayWeekday = calendar.component(.weekday, from: today)
+
+        let schedule = Schedule(activeDays: [todayWeekday], isActive: true)
+        #expect(schedule.isActiveOn(date: today) == true)
+    }
+
+    @Test func scheduleNotActiveOnWrongDay() {
+        let calendar = Calendar.current
+        let today = Date()
+        let todayWeekday = calendar.component(.weekday, from: today)
+        let otherWeekday = todayWeekday == 1 ? 2 : 1
+
+        let schedule = Schedule(activeDays: [otherWeekday], isActive: true)
+        #expect(schedule.isActiveOn(date: today) == false)
+    }
+
+    @Test func scheduleNotActiveWhenDisabled() {
+        let calendar = Calendar.current
+        let today = Date()
+        let todayWeekday = calendar.component(.weekday, from: today)
+
+        let schedule = Schedule(activeDays: [todayWeekday], isActive: false)
+        #expect(schedule.isActiveOn(date: today) == false)
+    }
+}
+
+struct ScheduleWindowTests {
+    @Test func scheduleWithinWindowAtStartTime() {
+        let calendar = Calendar.current
+        let now = Date()
+        let currentHour = calendar.component(.hour, from: now)
+        let currentMinute = calendar.component(.minute, from: now)
+        let todayWeekday = calendar.component(.weekday, from: now)
+
+        let schedule = Schedule(
+            activeDays: [todayWeekday],
+            startHour: currentHour,
+            startMinute: currentMinute,
+            duration: 60 * 60, // 1 hour
+            isActive: true
+        )
+
+        #expect(schedule.isWithinWindow(at: now) == true)
+    }
+
+    @Test func scheduleNotWithinWindowBeforeStart() {
+        let calendar = Calendar.current
+        let todayWeekday = calendar.component(.weekday, from: Date())
+
+        // Schedule starting at 23:00 with 1 hour duration
+        let schedule = Schedule(
+            activeDays: [todayWeekday],
+            startHour: 23,
+            startMinute: 0,
+            duration: 60 * 60,
+            isActive: true
+        )
+
+        // Check at 9 AM - should not be within window
+        var components = calendar.dateComponents([.year, .month, .day], from: Date())
+        components.hour = 9
+        components.minute = 0
+        if let nineAM = calendar.date(from: components) {
+            #expect(schedule.isWithinWindow(at: nineAM) == false)
+        }
+    }
+
+    @Test func scheduleNotWithinWindowAfterEnd() {
+        let calendar = Calendar.current
+        let todayWeekday = calendar.component(.weekday, from: Date())
+
+        // Schedule starting at 9:00 with 1 hour duration
+        let schedule = Schedule(
+            activeDays: [todayWeekday],
+            startHour: 9,
+            startMinute: 0,
+            duration: 60 * 60,
+            isActive: true
+        )
+
+        // Check at 11 AM - should not be within window
+        var components = calendar.dateComponents([.year, .month, .day], from: Date())
+        components.hour = 11
+        components.minute = 0
+        if let elevenAM = calendar.date(from: components) {
+            #expect(schedule.isWithinWindow(at: elevenAM) == false)
+        }
+    }
+}
+
+struct ScheduleNextTimeTests {
+    @Test func nextScheduledTimeReturnsNilWhenInactive() {
+        let schedule = Schedule(activeDays: [1, 2, 3, 4, 5, 6, 7], isActive: false)
+        #expect(schedule.nextScheduledTime(from: Date()) == nil)
+    }
+
+    @Test func nextScheduledTimeReturnsNilWhenNoDays() {
+        let schedule = Schedule(activeDays: [], isActive: true)
+        #expect(schedule.nextScheduledTime(from: Date()) == nil)
+    }
+
+    @Test func nextScheduledTimeReturnsDateForActiveDays() {
+        let schedule = Schedule(
+            activeDays: [1, 2, 3, 4, 5, 6, 7], // Daily
+            startHour: 23,
+            startMinute: 59,
+            isActive: true
+        )
+
+        let nextTime = schedule.nextScheduledTime(from: Date())
+        #expect(nextTime != nil)
+
+        if let time = nextTime {
+            let calendar = Calendar.current
+            let hour = calendar.component(.hour, from: time)
+            let minute = calendar.component(.minute, from: time)
+            #expect(hour == 23)
+            #expect(minute == 59)
+        }
+    }
+}
+
+@MainActor
+struct ScheduleManagerTests {
+    @Test func sharedInstanceExists() async {
+        let manager = ScheduleManager.shared
+        #expect(manager != nil)
+    }
+
+    @Test func initialStateNoActiveSchedule() async {
+        let manager = ScheduleManager.shared
+        manager.clearActiveSchedule()
+        #expect(manager.activeSchedule == nil)
+        #expect(manager.isScheduleTriggered == false)
+    }
+
+    @Test func clearActiveScheduleWorks() async {
+        let manager = ScheduleManager.shared
+        manager.clearActiveSchedule()
+        #expect(manager.activeSchedule == nil)
+        #expect(manager.isScheduleTriggered == false)
+    }
+}
+
+@MainActor
+struct TimerViewModelScheduleTests {
+    @Test func isScheduledSessionInitiallyFalse() async {
+        let viewModel = TimerViewModel()
+        #expect(viewModel.isScheduledSession == false)
+    }
+
+    @Test func scheduleDisplayNameEmptyWhenNoSchedule() async {
+        let viewModel = TimerViewModel()
+        #expect(viewModel.scheduleDisplayName == "")
+    }
+
+    @Test func checkAndStartScheduledSessionDoesNothingWhenActive() async {
+        let viewModel = TimerViewModel()
+        viewModel.primaryButtonTapped() // Start a regular session
+
+        viewModel.checkAndStartScheduledSession()
+
+        // Should not change anything since a session is active
+        #expect(viewModel.timerService.isRunning == true)
+    }
+}
