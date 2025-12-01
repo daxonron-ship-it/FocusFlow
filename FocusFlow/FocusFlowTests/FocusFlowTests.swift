@@ -1084,3 +1084,287 @@ struct EmergencyBypassTests {
         #expect(bypassCalled == true)
     }
 }
+
+// MARK: - Milestone 6: Stats & Insights Tests
+
+struct SessionFilterTests {
+    @Test func sessionFilterAllIncludesCompletedAndQuit() {
+        let filter = SessionFilter.all
+
+        let completed = FocusSession(plannedDuration: 25 * 60, completionStatus: .completed)
+        let quit = FocusSession(plannedDuration: 25 * 60, completionStatus: .quitEarly)
+        let inProgress = FocusSession(plannedDuration: 25 * 60, completionStatus: .inProgress)
+
+        #expect(filter.predicate(completed) == true)
+        #expect(filter.predicate(quit) == true)
+        #expect(filter.predicate(inProgress) == false)
+    }
+
+    @Test func sessionFilterCompletedOnlyIncludesCompleted() {
+        let filter = SessionFilter.completed
+
+        let completed = FocusSession(plannedDuration: 25 * 60, completionStatus: .completed)
+        let quit = FocusSession(plannedDuration: 25 * 60, completionStatus: .quitEarly)
+
+        #expect(filter.predicate(completed) == true)
+        #expect(filter.predicate(quit) == false)
+    }
+
+    @Test func sessionFilterQuitOnlyIncludesQuit() {
+        let filter = SessionFilter.quit
+
+        let completed = FocusSession(plannedDuration: 25 * 60, completionStatus: .completed)
+        let quit = FocusSession(plannedDuration: 25 * 60, completionStatus: .quitEarly)
+
+        #expect(filter.predicate(completed) == false)
+        #expect(filter.predicate(quit) == true)
+    }
+}
+
+struct TimeFilterTests {
+    @Test func weekFilterHasStartDate() {
+        let filter = TimeFilter.week
+        #expect(filter.startDate != nil)
+    }
+
+    @Test func monthFilterHasStartDate() {
+        let filter = TimeFilter.month
+        #expect(filter.startDate != nil)
+    }
+
+    @Test func allTimeFilterHasNoStartDate() {
+        let filter = TimeFilter.all
+        #expect(filter.startDate == nil)
+    }
+
+    @Test func weekFilterStartsAtBeginningOfWeek() {
+        let filter = TimeFilter.week
+        guard let startDate = filter.startDate else {
+            #expect(Bool(false), "Week filter should have start date")
+            return
+        }
+
+        let calendar = Calendar.current
+        let weekday = calendar.component(.weekday, from: startDate)
+
+        // Should be Sunday (1) or Monday (2) depending on locale
+        #expect(weekday == 1 || weekday == 2)
+    }
+
+    @Test func monthFilterStartsAtBeginningOfMonth() {
+        let filter = TimeFilter.month
+        guard let startDate = filter.startDate else {
+            #expect(Bool(false), "Month filter should have start date")
+            return
+        }
+
+        let calendar = Calendar.current
+        let day = calendar.component(.day, from: startDate)
+
+        #expect(day == 1)
+    }
+}
+
+struct WeeklyStatsCalculationTests {
+    @Test func quitRateCalculationWithNoSessions() {
+        let completed: [FocusSession] = []
+        let quit: [FocusSession] = []
+
+        let total = completed.count + quit.count
+        let quitRate = total > 0 ? Double(quit.count) / Double(total) * 100 : 0
+
+        #expect(quitRate == 0)
+    }
+
+    @Test func quitRateCalculationWithOnlyCompleted() {
+        let completed = [
+            FocusSession(plannedDuration: 25 * 60, completionStatus: .completed),
+            FocusSession(plannedDuration: 25 * 60, completionStatus: .completed)
+        ]
+        let quit: [FocusSession] = []
+
+        let total = completed.count + quit.count
+        let quitRate = total > 0 ? Double(quit.count) / Double(total) * 100 : 0
+
+        #expect(quitRate == 0)
+    }
+
+    @Test func quitRateCalculationWithMixedSessions() {
+        let completed = [
+            FocusSession(plannedDuration: 25 * 60, completionStatus: .completed),
+            FocusSession(plannedDuration: 25 * 60, completionStatus: .completed),
+            FocusSession(plannedDuration: 25 * 60, completionStatus: .completed),
+            FocusSession(plannedDuration: 25 * 60, completionStatus: .completed)
+        ]
+        let quit = [
+            FocusSession(plannedDuration: 25 * 60, completionStatus: .quitEarly)
+        ]
+
+        let total = completed.count + quit.count
+        let quitRate = total > 0 ? Double(quit.count) / Double(total) * 100 : 0
+
+        #expect(quitRate == 20.0) // 1 out of 5 = 20%
+    }
+
+    @Test func totalFocusTimeCalculation() {
+        let session1 = FocusSession(plannedDuration: 25 * 60, completionStatus: .completed)
+        session1.actualDuration = 25 * 60
+
+        let session2 = FocusSession(plannedDuration: 50 * 60, completionStatus: .completed)
+        session2.actualDuration = 50 * 60
+
+        let sessions = [session1, session2]
+        let totalFocusTime = sessions.reduce(0) { $0 + ($1.actualDuration ?? $1.plannedDuration) }
+
+        #expect(totalFocusTime == 75 * 60) // 75 minutes
+    }
+
+    @Test func totalFocusTimeWithNilActualDuration() {
+        let session1 = FocusSession(plannedDuration: 25 * 60, completionStatus: .completed)
+        // actualDuration is nil, should fall back to plannedDuration
+
+        let sessions = [session1]
+        let totalFocusTime = sessions.reduce(0) { $0 + ($1.actualDuration ?? $1.plannedDuration) }
+
+        #expect(totalFocusTime == 25 * 60)
+    }
+}
+
+struct CalendarDayStatusTests {
+    @Test func dayStatusEnumExists() {
+        let completed = DayStatus.completed
+        let quitOnly = DayStatus.quitOnly
+        let noActivity = DayStatus.noActivity
+        let today = DayStatus.today
+        let future = DayStatus.future
+
+        #expect(completed != quitOnly)
+        #expect(noActivity != today)
+        #expect(today != future)
+    }
+}
+
+struct QuitLogPatternTests {
+    @Test func quitProgressPercentageCalculation() {
+        let session = FocusSession(plannedDuration: 50 * 60, completionStatus: .quitEarly)
+        session.actualDuration = 25 * 60 // Quit halfway
+
+        let progressPercentage = (session.actualDuration! / session.plannedDuration) * 100
+
+        #expect(progressPercentage == 50.0)
+    }
+
+    @Test func averageQuitPercentageCalculation() {
+        let session1 = FocusSession(plannedDuration: 100, completionStatus: .quitEarly)
+        session1.actualDuration = 50 // 50%
+
+        let session2 = FocusSession(plannedDuration: 100, completionStatus: .quitEarly)
+        session2.actualDuration = 30 // 30%
+
+        let sessions = [session1, session2]
+        let percentages = sessions.compactMap { session -> Double? in
+            guard let actualDuration = session.actualDuration else { return nil }
+            return (actualDuration / session.plannedDuration) * 100
+        }
+
+        let average = percentages.reduce(0, +) / Double(percentages.count)
+
+        #expect(average == 40.0) // (50 + 30) / 2 = 40%
+    }
+
+    @Test func timeOfDayCategories() {
+        let calendar = Calendar.current
+
+        // Morning: 5-12
+        var morningComponents = calendar.dateComponents([.year, .month, .day], from: Date())
+        morningComponents.hour = 9
+        let morning = calendar.date(from: morningComponents)!
+        let morningHour = calendar.component(.hour, from: morning)
+        #expect(morningHour >= 5 && morningHour < 12)
+
+        // Afternoon: 12-17
+        var afternoonComponents = calendar.dateComponents([.year, .month, .day], from: Date())
+        afternoonComponents.hour = 14
+        let afternoon = calendar.date(from: afternoonComponents)!
+        let afternoonHour = calendar.component(.hour, from: afternoon)
+        #expect(afternoonHour >= 12 && afternoonHour < 17)
+
+        // Evening: 17-21
+        var eveningComponents = calendar.dateComponents([.year, .month, .day], from: Date())
+        eveningComponents.hour = 19
+        let evening = calendar.date(from: eveningComponents)!
+        let eveningHour = calendar.component(.hour, from: evening)
+        #expect(eveningHour >= 17 && eveningHour < 21)
+    }
+}
+
+struct SessionGroupingTests {
+    @Test func sessionsCanBeGroupedByDate() {
+        let calendar = Calendar.current
+        let today = Date()
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today)!
+
+        let session1 = FocusSession(startTime: today, plannedDuration: 25 * 60)
+        let session2 = FocusSession(startTime: today, plannedDuration: 25 * 60)
+        let session3 = FocusSession(startTime: yesterday, plannedDuration: 25 * 60)
+
+        let sessions = [session1, session2, session3]
+
+        let grouped = Dictionary(grouping: sessions) { session -> String in
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .none
+            return formatter.string(from: session.startTime)
+        }
+
+        #expect(grouped.count == 2) // Two different days
+
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        let todayString = formatter.string(from: today)
+
+        #expect(grouped[todayString]?.count == 2) // Two sessions today
+    }
+}
+
+struct StreakCalendarTests {
+    @Test func daysInMonthReturnsCorrectCount() {
+        let calendar = Calendar.current
+
+        // Test for January 2025 (31 days)
+        var components = DateComponents()
+        components.year = 2025
+        components.month = 1
+        components.day = 15
+        let january = calendar.date(from: components)!
+
+        if let monthInterval = calendar.dateInterval(of: .month, for: january) {
+            let days = calendar.dateComponents([.day], from: monthInterval.start, to: monthInterval.end).day!
+            #expect(days == 31)
+        }
+
+        // Test for February 2025 (28 days - not a leap year in 2025)
+        components.month = 2
+        let february = calendar.date(from: components)!
+
+        if let monthInterval = calendar.dateInterval(of: .month, for: february) {
+            let days = calendar.dateComponents([.day], from: monthInterval.start, to: monthInterval.end).day!
+            #expect(days == 28)
+        }
+    }
+
+    @Test func weekdayOfFirstDayInMonth() {
+        let calendar = Calendar.current
+
+        var components = DateComponents()
+        components.year = 2025
+        components.month = 1
+        components.day = 1
+        let january1 = calendar.date(from: components)!
+
+        let weekday = calendar.component(.weekday, from: january1)
+        // January 1, 2025 is a Wednesday (weekday 4)
+        #expect(weekday == 4)
+    }
+}
