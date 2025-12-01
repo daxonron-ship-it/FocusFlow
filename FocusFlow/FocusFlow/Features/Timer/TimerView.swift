@@ -117,6 +117,7 @@ struct TimerView: View {
                         .font(.system(size: AppFontSize.headline, weight: .semibold, design: .rounded))
                         .foregroundColor(AppColors.textPrimary)
                         .frame(maxWidth: .infinity)
+                        .frame(minHeight: 44) // Ensure 44pt minimum touch target
                         .padding(.vertical, AppSpacing.md + 4)
                         .background(
                             RoundedRectangle(cornerRadius: AppCornerRadius.medium)
@@ -125,6 +126,8 @@ struct TimerView: View {
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, AppSpacing.xl)
+                .accessibilityLabel(viewModel.primaryButtonTitle)
+                .accessibilityHint(primaryButtonAccessibilityHint)
 
                 // Stop button (only show during active session)
                 if viewModel.showStopButton {
@@ -132,9 +135,12 @@ struct TimerView: View {
                         Text("End Session")
                             .font(.system(size: AppFontSize.body, weight: .medium, design: .rounded))
                             .foregroundColor(AppColors.danger)
+                            .frame(minHeight: 44) // Ensure 44pt minimum touch target
                     }
                     .buttonStyle(.plain)
                     .transition(.opacity)
+                    .accessibilityLabel("End session early")
+                    .accessibilityHint(viewModel.isStrictModeEnabled ? "Strict Mode is enabled. Will show challenge before ending." : "Ends your current focus session")
                 }
 
                 // Bottom info cards
@@ -195,6 +201,21 @@ struct TimerView: View {
         }
     }
 
+    private var primaryButtonAccessibilityHint: String {
+        switch viewModel.timerService.state {
+        case .idle:
+            return viewModel.sessionType == .work ?
+                "Starts a \(Int(viewModel.selectedDuration / 60)) minute focus session" :
+                "Starts a \(Int(viewModel.selectedDuration / 60)) minute break"
+        case .running:
+            return "Pauses the current session"
+        case .paused:
+            return "Resumes the paused session"
+        case .completed:
+            return "Starts the next session"
+        }
+    }
+
     private func formatPauseDuration(_ duration: TimeInterval) -> String {
         let totalSeconds = Int(duration)
         let minutes = totalSeconds / 60
@@ -217,12 +238,15 @@ struct InfoCard: View {
     var isPlaceholder: Bool = false
     var showChevron: Bool = false
 
+    @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = 20
+    @ScaledMetric(relativeTo: .body) private var iconFrameSize: CGFloat = 36
+
     var body: some View {
         HStack(spacing: AppSpacing.md) {
             Image(systemName: icon)
-                .font(.system(size: 20))
+                .font(.system(size: iconSize))
                 .foregroundColor(iconColor)
-                .frame(width: 36, height: 36)
+                .frame(width: iconFrameSize, height: iconFrameSize)
                 .background(
                     RoundedRectangle(cornerRadius: AppCornerRadius.small)
                         .fill(AppColors.secondaryBackground)
@@ -250,11 +274,15 @@ struct InfoCard: View {
         .padding(.horizontal, AppSpacing.md)
         .padding(.vertical, AppSpacing.sm + 4)
         .frame(maxWidth: .infinity)
+        .frame(minHeight: 44) // Ensure 44pt minimum touch target
         .background(
             RoundedRectangle(cornerRadius: AppCornerRadius.medium)
                 .fill(AppColors.cardBackground)
         )
         .opacity(isPlaceholder ? 0.7 : 1.0)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title): \(value)")
+        .accessibilityHint(showChevron ? "Double tap to configure" : "")
     }
 }
 

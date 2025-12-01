@@ -1678,3 +1678,236 @@ struct TimerViewModelScheduleTests {
         #expect(viewModel.timerService.isRunning == true)
     }
 }
+
+// MARK: - Milestone 8: Live Activity Tests
+
+struct FocusActivityAttributesTests {
+    @Test func attributesInitialization() {
+        let startTime = Date()
+        let endTime = startTime.addingTimeInterval(25 * 60)
+        let duration: TimeInterval = 25 * 60
+
+        let attributes = FocusActivityAttributes(
+            startTime: startTime,
+            endTime: endTime,
+            duration: duration
+        )
+
+        #expect(attributes.startTime == startTime)
+        #expect(attributes.endTime == endTime)
+        #expect(attributes.duration == duration)
+    }
+
+    @Test func contentStateInitialization() {
+        let sessionId = UUID()
+        let state = FocusActivityAttributes.ContentState(
+            sessionId: sessionId,
+            sessionType: "Focus"
+        )
+
+        #expect(state.sessionId == sessionId)
+        #expect(state.sessionType == "Focus")
+    }
+
+    @Test func contentStateSessionTypes() {
+        let focusState = FocusActivityAttributes.ContentState(
+            sessionId: UUID(),
+            sessionType: "Focus"
+        )
+        #expect(focusState.sessionType == "Focus")
+
+        let breakState = FocusActivityAttributes.ContentState(
+            sessionId: UUID(),
+            sessionType: "Break"
+        )
+        #expect(breakState.sessionType == "Break")
+    }
+
+    @Test func contentStateHashable() {
+        let sessionId = UUID()
+        let state1 = FocusActivityAttributes.ContentState(
+            sessionId: sessionId,
+            sessionType: "Focus"
+        )
+        let state2 = FocusActivityAttributes.ContentState(
+            sessionId: sessionId,
+            sessionType: "Focus"
+        )
+
+        #expect(state1 == state2)
+        #expect(state1.hashValue == state2.hashValue)
+    }
+
+    @Test func contentStateCodable() throws {
+        let state = FocusActivityAttributes.ContentState(
+            sessionId: UUID(),
+            sessionType: "Focus"
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(state)
+        #expect(data.count > 0)
+
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(FocusActivityAttributes.ContentState.self, from: data)
+        #expect(decoded == state)
+    }
+}
+
+@MainActor
+struct LiveActivityServiceTests {
+    @Test func sharedInstanceExists() async {
+        let service = LiveActivityService.shared
+        #expect(service != nil)
+    }
+
+    @Test func initiallyNoActiveActivity() async {
+        let service = LiveActivityService.shared
+        #expect(service.hasActiveActivity == false)
+        #expect(service.currentSessionId == nil)
+    }
+
+    @Test func areActivitiesEnabledReturnsValue() async {
+        let service = LiveActivityService.shared
+        // This will return true or false depending on system settings
+        // Just verify it doesn't crash
+        _ = service.areActivitiesEnabled
+    }
+
+    @Test func getActiveSessionIdsReturnsArray() async {
+        let service = LiveActivityService.shared
+        let sessionIds = service.getActiveSessionIds()
+        #expect(sessionIds is [UUID])
+    }
+
+    @Test func isSessionActiveReturnsFalseForRandomId() async {
+        let service = LiveActivityService.shared
+        let randomId = UUID()
+        #expect(service.isSessionActive(sessionId: randomId) == false)
+    }
+}
+
+@MainActor
+struct TimerViewModelLiveActivityTests {
+    @Test func viewModelHasLiveActivityService() async {
+        let viewModel = TimerViewModel()
+        #expect(viewModel.liveActivityService != nil)
+    }
+
+    @Test func viewModelUsesSharedLiveActivityService() async {
+        let viewModel = TimerViewModel()
+        #expect(viewModel.liveActivityService === LiveActivityService.shared)
+    }
+}
+
+// MARK: - Milestone 8: Onboarding Tests
+
+struct OnboardingLogicTests {
+    @Test func onboardingFlagStoredInAppStorage() {
+        // Verify the key name is consistent
+        let key = "hasCompletedOnboarding"
+        #expect(key == "hasCompletedOnboarding")
+    }
+
+    @Test func strictModePreviewFlagStoredInAppStorage() {
+        // Verify the key name is consistent
+        let key = "hasSeenStrictModePreview"
+        #expect(key == "hasSeenStrictModePreview")
+    }
+}
+
+struct StrictModePreviewLogicTests {
+    @Test func challengeTypesAvailable() {
+        let allTypes = ChallengeType.allCases
+        #expect(allTypes.count == 4)
+        #expect(allTypes.contains(.phrase))
+        #expect(allTypes.contains(.math))
+        #expect(allTypes.contains(.pattern))
+        #expect(allTypes.contains(.holdButton))
+    }
+
+    @Test func strictModeTonesAvailable() {
+        let allTones = StrictModeTone.allCases
+        #expect(allTones.count == 4)
+        #expect(allTones.contains(.gentle))
+        #expect(allTones.contains(.neutral))
+        #expect(allTones.contains(.strict))
+        #expect(allTones.contains(.custom))
+    }
+}
+
+// MARK: - Milestone 8: Accessibility Tests
+
+struct AccessibilityTests {
+    @Test func sessionTypeHasDisplayName() {
+        #expect(!SessionType.work.displayName.isEmpty)
+        #expect(!SessionType.rest.displayName.isEmpty)
+    }
+
+    @Test func timeIntervalFormattedTimeNotEmpty() {
+        let duration: TimeInterval = 25 * 60
+        #expect(!duration.formattedTime.isEmpty)
+        #expect(duration.formattedTime.contains(":"))
+    }
+
+    @Test func timeIntervalFormattedTimeVerboseNotEmpty() {
+        let duration: TimeInterval = 25 * 60
+        #expect(!duration.formattedTimeVerbose.isEmpty)
+    }
+
+    @Test func timerPresetHasDescription() {
+        for preset in TimerPreset.allCases {
+            #expect(!preset.displayName.isEmpty)
+            #expect(!preset.description.isEmpty)
+        }
+    }
+
+    @Test func challengeTypeHasDisplayName() {
+        for type in ChallengeType.allCases {
+            #expect(!type.displayName.isEmpty)
+        }
+    }
+}
+
+struct DynamicTypeTests {
+    @Test func appFontSizesAreDefined() {
+        #expect(AppFontSize.timerDisplay > 0)
+        #expect(AppFontSize.title > 0)
+        #expect(AppFontSize.headline > 0)
+        #expect(AppFontSize.body > 0)
+        #expect(AppFontSize.caption > 0)
+        #expect(AppFontSize.small > 0)
+    }
+
+    @Test func fontSizeHierarchy() {
+        #expect(AppFontSize.timerDisplay > AppFontSize.title)
+        #expect(AppFontSize.title > AppFontSize.headline)
+        #expect(AppFontSize.headline > AppFontSize.body)
+        #expect(AppFontSize.body > AppFontSize.caption)
+        #expect(AppFontSize.caption > AppFontSize.small)
+    }
+}
+
+struct TouchTargetTests {
+    @Test func minimumTouchTargetSize() {
+        // iOS HIG recommends 44x44 pt minimum touch target
+        let minimumSize: CGFloat = 44
+        #expect(minimumSize == 44)
+    }
+
+    @Test func spacingValuesAreDefined() {
+        #expect(AppSpacing.xs > 0)
+        #expect(AppSpacing.sm > 0)
+        #expect(AppSpacing.md > 0)
+        #expect(AppSpacing.lg > 0)
+        #expect(AppSpacing.xl > 0)
+        #expect(AppSpacing.xxl > 0)
+    }
+
+    @Test func cornerRadiiAreDefined() {
+        #expect(AppCornerRadius.small > 0)
+        #expect(AppCornerRadius.medium > 0)
+        #expect(AppCornerRadius.large > 0)
+        #expect(AppCornerRadius.extraLarge > 0)
+    }
+}

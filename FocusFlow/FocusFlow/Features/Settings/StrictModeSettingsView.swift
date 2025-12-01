@@ -9,6 +9,10 @@ struct StrictModeSettingsView: View {
     @State private var showDisableConfirmation: Bool = false
     @State private var showBuyersRemorseAlert: Bool = false
     @State private var showEnableConfirmation: Bool = false
+    @State private var showStrictModePreview: Bool = false
+
+    /// Track if user has seen the Strict Mode preview
+    @AppStorage("hasSeenStrictModePreview") private var hasSeenStrictModePreview: Bool = false
 
     /// Timer for updating the countdown display
     @State private var refreshTrigger: Bool = false
@@ -70,6 +74,15 @@ struct StrictModeSettingsView: View {
         } message: {
             Text("Strict Mode will be disabled tomorrow at \(scheduledDisableTimeString). Active sessions will still use Strict Mode until then.")
         }
+        .fullScreenCover(isPresented: $showStrictModePreview) {
+            StrictModePreview(isPresented: $showStrictModePreview) { challengeType, tone in
+                // Apply settings from preview
+                settings.challengeType = challengeType
+                settings.strictModeTone = tone
+                enableStrictMode()
+                hasSeenStrictModePreview = true
+            }
+        }
     }
 
     // MARK: - Strict Mode Toggle
@@ -80,7 +93,12 @@ struct StrictModeSettingsView: View {
             get: { settings.strictModeEnabled },
             set: { newValue in
                 if newValue {
-                    showEnableConfirmation = true
+                    // Show preview if user hasn't seen it, otherwise show confirmation
+                    if !hasSeenStrictModePreview {
+                        showStrictModePreview = true
+                    } else {
+                        showEnableConfirmation = true
+                    }
                 } else {
                     handleDisableRequest()
                 }

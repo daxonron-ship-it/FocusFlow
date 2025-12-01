@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 import SwiftData
 import Combine
-
+import ActivityKit
 import FamilyControls
 
 @MainActor
@@ -21,13 +21,15 @@ final class TimerViewModel: ObservableObject {
 
     let timerService: TimerService
     let blockingManager: BlockingManager
+    let liveActivityService: LiveActivityService
     private var modelContext: ModelContext?
     private var cancellables = Set<AnyCancellable>()
     private var savedActivitySelection: FamilyActivitySelection?
 
-    init(timerService: TimerService? = nil, blockingManager: BlockingManager? = nil) {
+    init(timerService: TimerService? = nil, blockingManager: BlockingManager? = nil, liveActivityService: LiveActivityService? = nil) {
         self.timerService = timerService ?? TimerService()
         self.blockingManager = blockingManager ?? BlockingManager.shared
+        self.liveActivityService = liveActivityService ?? LiveActivityService.shared
         setupCompletionHandler()
         setupTimerServiceObserver()
         setupBlockingManagerObserver()
@@ -222,6 +224,9 @@ final class TimerViewModel: ObservableObject {
         // Stop app blocking
         blockingManager.stopBlocking()
 
+        // End Live Activity
+        liveActivityService.endActivity()
+
         // Restore app selection if this was a scheduled session
         restoreAppSelectionIfNeeded()
 
@@ -324,6 +329,9 @@ final class TimerViewModel: ObservableObject {
         // Determine strict mode for this session
         let useStrictMode = schedule.strictModeEnabled || isStrictModeEnabled
 
+        let startTime = Date()
+        let endTime = startTime.addingTimeInterval(schedule.duration)
+
         timerService.startSession(
             duration: schedule.duration,
             sessionType: .work,
@@ -335,8 +343,17 @@ final class TimerViewModel: ObservableObject {
             blockingManager.startBlocking()
         }
 
+        // Start Live Activity
+        if let session = timerService.currentSession {
+            liveActivityService.startActivity(
+                sessionId: session.id,
+                startTime: startTime,
+                endTime: endTime,
+                sessionType: .work
+            )
+        }
+
         // Schedule completion notification
-        let endTime = Date().addingTimeInterval(schedule.duration)
         NotificationService.shared.scheduleScheduleComplete(
             at: endTime,
             scheduleName: schedule.name,
@@ -388,8 +405,12 @@ final class TimerViewModel: ObservableObject {
     }
 
     private func startSession() {
+        let duration = selectedDuration
+        let startTime = Date()
+        let endTime = startTime.addingTimeInterval(duration)
+
         timerService.startSession(
-            duration: selectedDuration,
+            duration: duration,
             sessionType: sessionType,
             strictModeEnabled: isStrictModeEnabled
         )
@@ -397,6 +418,16 @@ final class TimerViewModel: ObservableObject {
         // Start app blocking for work sessions
         if sessionType == .work && blockingManager.hasSelectedApps {
             blockingManager.startBlocking()
+        }
+
+        // Start Live Activity
+        if let session = timerService.currentSession {
+            liveActivityService.startActivity(
+                sessionId: session.id,
+                startTime: startTime,
+                endTime: endTime,
+                sessionType: sessionType
+            )
         }
 
         // Request notification permission on first session
@@ -408,6 +439,9 @@ final class TimerViewModel: ObservableObject {
     private func handleSessionCompletion(_ session: FocusSession) {
         // Stop app blocking
         blockingManager.stopBlocking()
+
+        // End Live Activity
+        liveActivityService.endActivity()
 
         // Restore app selection if this was a scheduled session
         restoreAppSelectionIfNeeded()
