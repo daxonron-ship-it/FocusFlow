@@ -256,14 +256,18 @@ struct InfoCard: View {
                 Text(title)
                     .font(.system(size: AppFontSize.caption, weight: .regular, design: .rounded))
                     .foregroundColor(AppColors.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
 
                 Text(value)
                     .font(.system(size: AppFontSize.body, weight: .semibold, design: .rounded))
                     .foregroundColor(valueColor)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
+            .layoutPriority(1)
 
-            Spacer()
+            Spacer(minLength: 0)
 
             if showChevron {
                 Image(systemName: "chevron.right")
